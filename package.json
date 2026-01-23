@@ -1,65 +1,26 @@
 {
-  "name": "InstantViewBot",
-  "version": "1.2.0",
-  "description": "Telegram Bot For InstantView",
-  "author": "Al <albertincx@gmail.com>",
-  "main": "src/index.js",
-  "private": false,
-  "license": "MIT",
-  "engines": {
-    "node": "12.x",
-    "yarn": "*"
-  },
-  "scripts": {
-    "precommit": "yarn lint",
-    "start": "NODE_ENV=production node ./src/index.js",
-    "dev": "NODE_ENV=production nodemon ./src/index.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git@github.com:/albertincx/formatbot1.git"
-  },
-  "keywords": [
-    "nodejs",
-    "es6",
-    "es7",
-    "es8",
-    "eslint"
-  ],
-  "dependencies": {
-    "@postlight/mercury-parser": "^2.2.0",
-    "amqplib": "^0.6.0",
-    "atob": "^2.1.2",
-    "co": "^4.6.0",
-    "cron": "^1.8.2",
-    "dotenv-safe": "^8.2.0",
-    "express": "^4.17.1",
-    "is-image": "^1.0.1",
-    "is-image-url": "^1.1.8",
-    "is-url": "^1.2.1",
-    "isomorphic-fetch": "^2.2.1",
-    "jsbn": "^1.1.0",
-    "jsdom": "^16.3.0",
-    "lodash": "^4.17.19",
-    "mongoose": "^5.9.19",
-    "node-fetch": "^2.6.0",
-    "puppeteer": "^4.0.0",
-    "sanitize-html": "^1.22.1",
-    "showdown": "^1.9.1",
-    "statuses": "^1.5.0",
-    "sync-request": "^2.1.0",
-    "telegraf": "^3.38.0",
-    "wget-improved": "^3.2.0"
-  },
-  "devDependencies": {
-    "ava": "^3.5.2",
-    "babel-eslint": "^10.1.0",
-    "eslint": "^7.17.0",
-    "eslint-config-airbnb-base": "^14.2.1",
-    "eslint-config-prettier": "^7.1.0",
-    "eslint-plugin-flowtype": "^5.2.0",
-    "eslint-plugin-import": "^2.22.1",
-    "eslint-plugin-prettier": "^3.3.0",
-    "prettier": "^2.2.1"
-  }
+	"name": "worker",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"test": "vitest",
+		"cf-typegen": "wrangler types",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.12.4",
+		"@types/mozilla-readability": "^0.2.1",
+		"typescript": "^5.5.2",
+		"vitest": "~3.2.0",
+		"wrangler": "^4.60.0"
+	},
+	"dependencies": {
+		"@cloudflare/puppeteer": "^1.0.5",
+		"@mozilla/readability": "^0.6.0",
+		"linkedom": "^0.18.12",
+		"zod": "^4.3.6"
+	}
 }

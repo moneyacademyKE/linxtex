@@ -1,0 +1,116 @@
+
+ ⛅️ wrangler 4.60.0
+───────────────────
+Resource location: remote 
+
+🌀 Executing on remote database iv-cache (9cdfcadb-595d-4ae7-8733-5e8f011752fc):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 1 command in 0.31ms
+[
+  {
+    "results": [
+      {
+        "id": 12,
+        "event_type": "PROCESSING_ERROR",
+        "data": "{\"url\":\"https://www.capitalfm.co.ke/business/2026/01/burna-boy-drops-new-song-celebrating-africas-sports-stars/?utm_source=KenyaMOJA.com\",\"error\":\"Failed to fetch https://www.capitalfm.co.ke/business/2026/01/burna-boy-drops-new-song-celebrating-africas-sports-stars/?utm_source=KenyaMOJA.com: Forbidden\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:41:13"
+      },
+      {
+        "id": 11,
+        "event_type": "MESSAGE_RECEIVED",
+        "data": "{\"text\":\"https://www.capitalfm.co.ke/business/2026/01/burna-boy-drops-new-song-celebrating-africas-sports-stars/?utm_source=KenyaMOJA.com\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:41:11"
+      },
+      {
+        "id": 10,
+        "event_type": "LINK_PROCESSED",
+        "data": "{\"url\":\"https://www.money254.co.ke/post/how-i-turn-10-goats-into-ksh50-000-school-fees-every-year-money-and-me?utm_source=KenyaMOJA.com\",\"iv_link\":\"https://telegra.ph/How-I-Turn-10-Goats-Into-Ksh50000-School-Fees-Every-Year-01-23\",\"template\":\"default\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:40:39"
+      },
+      {
+        "id": 9,
+        "event_type": "MESSAGE_RECEIVED",
+        "data": "{\"text\":\"https://www.money254.co.ke/post/how-i-turn-10-goats-into-ksh50-000-school-fees-every-year-money-and-me?utm_source=KenyaMOJA.com\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:40:37"
+      },
+      {
+        "id": 8,
+        "event_type": "LINK_PROCESSED",
+        "data": "{\"url\":\"https://safiullin.dev/2024/03/31/ru/kak-ya-sozdaval-bota-dlya-telegram-InstantViewBot/\",\"iv_link\":\"https://telegra.ph/Kak-ya-sozdaval-bota-dlya-telegram-InstantViewBot-01-23\",\"template\":\"default\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:35:17"
+      },
+      {
+        "id": 7,
+        "event_type": "MESSAGE_RECEIVED",
+        "data": "{\"text\":\"https://safiullin.dev/2024/03/31/ru/kak-ya-sozdaval-bota-dlya-telegram-InstantViewBot/\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:35:16"
+      },
+      {
+        "id": 5,
+        "event_type": "MESSAGE_RECEIVED",
+        "data": "{\"text\":\"https://firstthings.com/we-are-repaganizing/\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:35:03"
+      },
+      {
+        "id": 6,
+        "event_type": "CACHE_HIT",
+        "data": "{\"url\":\"https://firstthings.com/we-are-repaganizing/\",\"iv_link\":\"https://telegra.ph/We-Are-Repaganizing-01-23\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:35:03"
+      },
+      {
+        "id": 3,
+        "event_type": "MESSAGE_RECEIVED",
+        "data": "{\"text\":\"https://www.capitalfm.co.ke/business/2026/01/burna-boy-drops-new-song-celebrating-africas-sports-stars/?utm_source=KenyaMOJA.com\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:33:51"
+      },
+      {
+        "id": 4,
+        "event_type": "PROCESSING_ERROR",
+        "data": "{\"url\":\"https://www.capitalfm.co.ke/business/2026/01/burna-boy-drops-new-song-celebrating-africas-sports-stars/?utm_source=KenyaMOJA.com\",\"error\":\"Failed to fetch https://www.capitalfm.co.ke/business/2026/01/burna-boy-drops-new-song-celebrating-africas-sports-stars/?utm_source=KenyaMOJA.com: Forbidden\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:33:51"
+      },
+      {
+        "id": 1,
+        "event_type": "MESSAGE_RECEIVED",
+        "data": "{\"text\":\"https://firstthings.com/we-are-repaganizing/\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:27:58"
+      },
+      {
+        "id": 2,
+        "event_type": "CACHE_HIT",
+        "data": "{\"url\":\"https://firstthings.com/we-are-repaganizing/\",\"iv_link\":\"https://telegra.ph/We-Are-Repaganizing-01-23\"}",
+        "chat_id": 1608111860,
+        "created_at": "2026-01-23 15:27:58"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WEUR",
+      "served_by_colo": "AMS",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.309
+      },
+      "duration": 0.309,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 36864,
+      "rows_read": 24,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

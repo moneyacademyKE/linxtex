@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moe Capital | Linxtex Aggregator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0c;
+            --surface: #141417;
+            --surface-hover: #1c1c21;
+            --primary: #4f46e5;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: rgba(255, 255, 255, 0.08);
+            --accent-finance: #10b981;
+            --accent-twitter: #38bdf8;
+            --accent-general: #f59e0b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        .header {
+            padding: 2rem;
+            border-bottom: 1px solid var(--border);
+            text-align: center;
+            background: linear-gradient(180deg, rgba(79, 70, 229, 0.05) 0%, transparent 100%);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .header h1 span {
+            color: var(--primary);
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .column-header {
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            padding-bottom: 1rem;
+            border-bottom: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .column-header i {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .head-finance i {
+            background-color: var(--accent-finance);
+        }
+
+        .head-twitter i {
+            background-color: var(--accent-twitter);
+        }
+
+        .head-general i {
+            background-color: var(--accent-general);
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            background: var(--surface-hover);
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+
+        .card .title {
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            color: var(--text);
+        }
+
+        .card .source {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 4rem;
+            color: var(--text-muted);
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card {
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <h1>Moe Capital <span>&bull;</span> Linxtex Feed</h1>
+        <div style="margin-top: 1rem; display: flex; gap: 1rem; justify-content: center; align-items: center;">
+            <button onclick="reprocess()" id="reprocess-btn"
+                style="background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; transition: all 0.2s;">
+                Reprocess Feed
+            </button>
+            <span id="status"
+                style="font-size: 0.75rem; color: var(--accent-finance); display: none;">Reprocessing...</span>
+        </div>
+    </header>
+
+    <main class="container" id="feed-container">
+        <div class="loading">Sensing signals from the network...</div>
+    </main>
+
+    <script>
+        async function fetchFeed() {
+            try {
+                const response = await fetch('/api/feed');
+                const data = await response.json();
+                renderFeed(data);
+            } catch (err) {
+                console.error('Feed error:', err);
+                document.getElementById('feed-container').innerHTML = '<div class="loading">Failed to load feed. Live data only.</div>';
+            }
+        }
+
+        function renderFeed(items) {
+            const container = document.getElementById('feed-container');
+            container.innerHTML = '';
+
+            const groups = {
+                finance: { title: 'Financial Insights', color: 'finance', items: [] },
+                twitter: { title: 'Network Pulse', color: 'twitter', items: [] },
+                general: { title: 'Global News', color: 'general', items: [] }
+            };
+
+            items.forEach(item => {
+                let insight = null;
+                try {
+                    if (item.raw_insight) insight = JSON.parse(item.raw_insight);
+                } catch (e) { }
+
+                const url = new URL(item.url);
+                const isTwitter = url.hostname.includes('twitter.com') || url.hostname.includes('x.com') || url.hostname.includes('nitter');
+                const isFinance = insight && (insight.tags.includes('Equity') || insight.tickers.length > 0 || insight.relevance_score > 70);
+
+                if (isFinance) groups.finance.items.push({ ...item, insight });
+                else if (isTwitter) groups.twitter.items.push({ ...item, insight });
+                else groups.general.items.push({ ...item, insight });
+            });
+
+            Object.values(groups).forEach(group => {
+                const col = document.createElement('div');
+                col.className = 'column';
+                col.innerHTML = `
+                    <div class="column-header head-${group.color}"><i></i> ${group.title}</div>
+                    ${group.items.map(item => `
+                        <a href="${item.iv_link}" class="card" target="_blank">
+                            <div class="title">${item.title}</div>
+                            <div class="source">
+                                <span>${new URL(item.url).hostname}</span>
+                                <span>${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                            ${item.insight ? `
+                                <div class="insight">
+                                    ${item.insight.summary.split('.')[0]}...
+                                </div>
+                            ` : ''}
+                        </a>
+                    `).join('')}
+                `;
+                col.innerHTML = `
+                    <div class="column-header head-${group.color}"><i></i> ${group.title}</div>
+                    ${group.items.map(item => `
+                        <a href="${item.iv_link}" class="card" target="_blank">
+                            <div class="title">${item.title}</div>
+                            <div class="source">
+                                <span>${new URL(item.url).hostname}</span>
+                                <span>${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                        </a>
+                    `).join('')}
+                `;
+                container.appendChild(col);
+            });
+        }
+
+        async function reprocess() {
+            const btn = document.getElementById('reprocess-btn');
+            const status = document.getElementById('status');
+            btn.disabled = true;
+            status.style.display = 'inline';
+            try {
+                await fetch('/api/reprocess');
+                setTimeout(() => {
+                    status.style.display = 'none';
+                    btn.disabled = false;
+                    fetchFeed();
+                }, 5000);
+            } catch (err) {
+                btn.disabled = false;
+                status.innerText = 'Failed';
+            }
+        }
+
+        fetchFeed();
+        setInterval(fetchFeed, 60000); // Refresh every minute
+    </script>
+</body>
+
+</html>
