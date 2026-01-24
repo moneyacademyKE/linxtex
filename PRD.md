@@ -8,12 +8,11 @@ The primary goal of **LinxtexBot** is to enhance the user experience on Telegram
 - **Content Curators**
 
 ## 3. Core Features
-- **URL Expansion**: Resolves shortened links to source URLs pre-emptively.
-- **Content Extraction**: Uses `@mozilla/readability` and Nitter fallbacks for clean extraction.
-- **Telegra.ph Integration**: Publishes to Telegra.ph for Instant View support.
-- **AI Synthesis**: Generates Macro and Financial insights using Gemini 2.0 Flash (Parallel).
-- **Aggregator Dashboard**: Public AllTop-style list of processed links and insights.
-- **Persistence**: Cloudflare D1 for URL and content hash caching.
+- **URL Expansion**: Speculative, parallel resolution of redirects.
+- **Fact Storage**: Global memoization of URL -> IV Link + AI Insight.
+- **De-complected Ingest**: < 5ms response time for webhook updates.
+- **Projection Dashboard**: High-velocity aggregator for world signals.
+- **Epistemic Engine**: Speculative parallelism for concurrent AI analysis.
 
 ## 4. Technical Constraints
 - **Runtime**: **Bun**.

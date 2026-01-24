@@ -56,7 +56,8 @@ export const EffectSchema = z.union([
         payload: z.object({
             url: z.string(),
             title: z.string(),
-            ivLink: z.string()
+            ivLink: z.string(),
+            insight: z.string().optional()
         })
     }),
     z.object({
@@ -221,7 +222,9 @@ function pipeline(domNode: any, state: { tickers: Set<string> }): any {
 }
 
 export function convertToTelegraphNodes(html: string): { nodes: TelegraphNode[], tickers: string[] } {
-    const { window } = parseHTML(html);
+    // Ensure we have a body by wrapping snippet if missing html tag
+    const fullHtml = html.includes("<html") ? html : `<html><body>${html}</body></html>`;
+    const { window } = parseHTML(fullHtml);
     const body = window.document.body;
     const state = { tickers: new Set<string>() };
 

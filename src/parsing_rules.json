@@ -31,6 +31,8 @@
     ],
     "transformations": {
         "div": "p",
-        "span": null
+        "span": null,
+        "h1": "h3",
+        "h2": "h4"
     }
 }

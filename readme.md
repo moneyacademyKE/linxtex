@@ -14,13 +14,18 @@ Cloudflare-native Telegram bot for generating Instant View pages.
    bun run dev
    ```
 
-3. **Deploy**:
+3. **Test (Native Speed)**:
+   ```bash
+   bun test
+   ```
+
+4. **Deploy**:
    ```bash
    bun run deploy
    ```
 
 ## Stack
-- **Framework**: Cloudflare Workers (using Bun)
-- **Database**: Cloudflare D1
-- **Parser**: @mozilla/readability
-- **Platform**: Telegra.ph
+- **Runtime**: **Bun** (Pure native, zero Node.js)
+- **Database**: Cloudflare D1 (L2 System of Record)
+- **Persistence**: Cloudflare KV (L1 View Layer)
+- **Logic**: Hickey-Mode Functional (De-complectened)

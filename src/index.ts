@@ -10,61 +10,84 @@ import { getTweetContent, extractTweetId, resolveRedirects } from './twitter';
 
 export interface Env {
 	DB: D1Database;
+	FACTS: KVNamespace;
 	BROWSER: Fetcher;
 	TELEGRAM_BOT_TOKEN: string;
 	GEMINI_API_KEY: string;
 	TELEGRAPH_TOKEN?: string;
 	TWITTER_BEARER_TOKEN?: string;
+	BROADCAST_CHAT_ID?: string;
 }
 
 // --- Imperative Shell ---
 
-const webhookHandler = async (request: Request, env: Env, ctx: ExecutionContext) => {
+export const webhookHandler = async (request: Request, env: Env, ctx: ExecutionContext) => {
 	const url = new URL(request.url);
 
 	// Dashboard API
 	if (request.method === 'GET' && url.pathname === '/api/reprocess') {
-		const urls: any = await env.DB.prepare('SELECT url FROM urls ORDER BY created_at DESC LIMIT 30').all();
+		const broadcast = url.searchParams.get('broadcast') === 'true';
+		const limit = parseInt(url.searchParams.get('limit') || '30');
+
+		const urls: any = await env.DB.prepare('SELECT url FROM urls ORDER BY created_at DESC LIMIT ?').bind(limit).all();
+
 		ctx.waitUntil((async () => {
 			for (const row of urls.results) {
 				const u = row.url as string;
 				try {
 					const expanded = await resolveRedirects(u);
-					await resolveLink(u, expanded, env, 0); // Use 0 as system chatId
-					console.log(`Reprocessed ${u}`);
+					const res = await resolveLink(u, expanded, env, ctx, 0); // Reprocess (Epistemic Backfill)
+
+					if (broadcast && env.BROADCAST_CHAT_ID && res.ivLink) {
+						const targets = env.BROADCAST_CHAT_ID.split(',').map(id => id.trim()).filter(id => id.length > 0);
+						for (const targetId of targets) {
+							const chatId = parseInt(targetId);
+							if (isNaN(chatId)) continue;
+							const responseText = (res.insight || '') + formatInstantViewResponse(res.title, res.originalUrl, res.ivLink);
+							await executeEffect({ type: 'SEND_TELEGRAM', payload: { chatId, text: responseText, isHtml: true } }, env);
+						}
+					}
+					console.log(`Reprocessed ${u} (Broadcast: ${broadcast})`);
 				} catch (e) {
 					console.error(`Failed to reprocess ${u}:`, e);
 				}
 			}
 		})());
-		return new Response('Reprocessing 30 latest items in background...', {
+
+		return new Response(`Reprocessing ${limit} items in background (Broadcast: ${broadcast})...`, {
 			headers: { 'Access-Control-Allow-Origin': '*' }
 		});
 	}
 
 	if (request.method === 'GET' && url.pathname === '/api/feed') {
-		const result = await env.DB.prepare(`
-			SELECT 
-				u.url, 
-				u.title, 
-				u.iv_link, 
-				i.raw_insight,
-				u.created_at
-			FROM urls u
-			LEFT JOIN content_hashes h ON h.title = u.title AND h.iv_link = u.iv_link
-			LEFT JOIN insight_logs i ON i.content_hash = h.hash
-			ORDER BY u.created_at DESC
-			LIMIT 60
-		`).all();
+		const cacheKey = new Request(url.toString(), request);
+		const cache = caches.default;
+		let response = await cache.match(cacheKey);
 
-		return new Response(JSON.stringify(result.results), {
-			headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-		});
+		if (!response) {
+			const result = await env.DB.prepare(`
+				SELECT url, title, iv_link, insight, created_at
+				FROM urls
+				ORDER BY created_at DESC
+				LIMIT 60
+			`).all();
+
+			response = new Response(JSON.stringify(result.results), {
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+					'Cache-Control': 'public, s-maxage=60'
+				}
+			});
+			ctx.waitUntil(cache.put(cacheKey, response.clone()));
+		}
+		return response;
 	}
 
 	if (request.method === 'POST' && url.pathname === '/webhook') {
 		const payload: any = await request.json();
-		await handleUpdate(payload, env, ctx);
+		// "De-complecting" Time: Hand off to background and return 200 immediately.
+		ctx.waitUntil(handleUpdate(payload, env, ctx));
 		return new Response('OK', { status: 200 });
 	}
 	return new Response('LinxtexBot Worker is running', { status: 200 });
@@ -74,7 +97,7 @@ export default {
 	fetch: composeMiddleware([errorMiddleware, logMiddleware, webhookHandler])
 };
 
-async function handleUpdate(update: any, env: Env, ctx: ExecutionContext) {
+export async function handleUpdate(update: any, env: Env, ctx: ExecutionContext) {
 	const message = update.message || update.channel_post || update.edited_message || update.edited_channel_post;
 	if (!message) return;
 
@@ -110,7 +133,7 @@ async function handleUpdate(update: any, env: Env, ctx: ExecutionContext) {
 			const expandedUrls = await Promise.all(urls.map(url => resolveRedirects(url)));
 
 			const results = await Promise.all(expandedUrls.map((expandedUrl, i) =>
-				resolveLink(urls[i], expandedUrl, env, chatId)
+				resolveLink(urls[i], expandedUrl, env, ctx, chatId)
 			));
 
 			let finalContentPrefix = '';
@@ -140,13 +163,26 @@ async function handleUpdate(update: any, env: Env, ctx: ExecutionContext) {
 	})());
 }
 
-async function resolveLink(originalUrl: string, expandedUrl: string, env: Env, chatId: number): Promise<{ originalUrl: string, ivLink: string, title: string, insight?: string }> {
-	// 1. Identity Check (URL Cache on expanded URL)
-	const cachedUrl: any = await env.DB.prepare('SELECT title, iv_link FROM urls WHERE url = ?').bind(expandedUrl).first();
-	if (cachedUrl) {
-		await executeEffect({ type: 'LOG_EVENT', payload: { eventType: 'CACHE_HIT', data: { url: expandedUrl }, chatId } }, env);
-		return { originalUrl, ivLink: cachedUrl.iv_link, title: cachedUrl.title };
+export async function resolveLink(originalUrl: string, expandedUrl: string, env: Env, ctx: ExecutionContext, chatId: number): Promise<{ originalUrl: string, ivLink: string, title: string, insight?: string }> {
+	// 1. L1 Discovery Path (KV - Ultra Fast Projection)
+	const hash = calculateHash(expandedUrl);
+	const kvFact = await env.FACTS.get(hash, 'json') as any;
+	if (kvFact && kvFact.insight) {
+		await executeEffect({ type: 'LOG_EVENT', payload: { eventType: 'GODMODE_L1_HIT', data: { url: expandedUrl, hash }, chatId } }, env);
+		return { originalUrl, ivLink: kvFact.ivLink, title: kvFact.title, insight: kvFact.insight };
 	}
+
+	// 2. L2 Memoization Path (D1 - Consistent System of Record)
+	const cachedUrl: any = await env.DB.prepare('SELECT title, iv_link, insight FROM urls WHERE url = ?').bind(expandedUrl).first();
+	if (cachedUrl && cachedUrl.insight) {
+		await executeEffect({ type: 'LOG_EVENT', payload: { eventType: 'GODMODE_L2_HIT', data: { url: expandedUrl }, chatId } }, env);
+		// Repopulate L1 View Layer Projection
+		ctx.waitUntil(env.FACTS.put(hash, JSON.stringify({ title: cachedUrl.title, ivLink: cachedUrl.iv_link, insight: cachedUrl.insight }), { expirationTtl: 604800 }));
+		return { originalUrl, ivLink: cachedUrl.iv_link, title: cachedUrl.title, insight: cachedUrl.insight };
+	}
+
+	// 3. Persistent Enrichment (Hickey Phase): If hit but NO insight, or total miss, proceed to process.
+	// (Note: If we hit L1/L2 but insight was null, we fall through here to re-generate it)
 
 	try {
 		let article: any;
@@ -202,10 +238,12 @@ async function resolveLink(originalUrl: string, expandedUrl: string, env: Env, c
 					insightStr = formatInsight(financial);
 				}
 				await executeEffect({ type: 'LOG_INSIGHT', payload: { contentHash: hash, rawInsight: JSON.stringify(insightObj), relevanceScore: insightObj.relevance_score } }, env);
+				await executeEffect({ type: 'LOG_EVENT', payload: { eventType: 'INSIGHT_SYNTHESIZED', data: { url: expandedUrl, score: insightObj.relevance_score }, chatId } }, env);
 			} else if (generalSummary) {
 				insightStr = formatGeneralSummary(generalSummary);
 				// Log general summary for dashboard visibility
 				await executeEffect({ type: 'LOG_INSIGHT', payload: { contentHash: hash, rawInsight: JSON.stringify({ summary: generalSummary, relevance_score: 50, tickers: [], tags: ['General'] }), relevanceScore: 50 } }, env);
+				await executeEffect({ type: 'LOG_EVENT', payload: { eventType: 'SUMMARY_GENERATED', data: { url: expandedUrl }, chatId } }, env);
 			}
 		}
 
@@ -215,9 +253,9 @@ async function resolveLink(originalUrl: string, expandedUrl: string, env: Env, c
 		const ivLink = await makeTelegraphPage(article.title, nodes, token);
 
 		// 5. Persistence
-		await executeEffect({ type: 'DB_WRITE_URL', payload: { url: expandedUrl, title: article.title, ivLink } }, env);
+		await executeEffect({ type: 'DB_WRITE_URL', payload: { url: expandedUrl, title: article.title, ivLink, insight: insightStr } }, env);
 		if (originalUrl !== expandedUrl) {
-			await executeEffect({ type: 'DB_WRITE_URL', payload: { url: originalUrl, title: article.title, ivLink } }, env);
+			await executeEffect({ type: 'DB_WRITE_URL', payload: { url: originalUrl, title: article.title, ivLink, insight: insightStr } }, env);
 		}
 		await executeEffect({ type: 'DB_WRITE_HASH', payload: { hash, title: article.title, ivLink } }, env);
 		await executeEffect({ type: 'LOG_EVENT', payload: { eventType: 'LINK_PROCESSED', data: { url: expandedUrl, hash }, chatId } }, env);
@@ -232,7 +270,7 @@ async function resolveLink(originalUrl: string, expandedUrl: string, env: Env, c
 
 // --- Imperative Execution Shell ---
 
-async function executeEffect(effect: any, env: Env) {
+export async function executeEffect(effect: any, env: Env) {
 	const validatedEffect = EffectSchema.parse(effect);
 
 	switch (validatedEffect.type) {
@@ -248,11 +286,14 @@ async function executeEffect(effect: any, env: Env) {
 			break;
 		}
 		case 'DB_WRITE_URL': {
-			const { url, title, ivLink } = validatedEffect.payload;
-			await env.DB.prepare('INSERT INTO urls (url, title, iv_link) VALUES (?, ?, ?)')
-				.bind(url, title, ivLink)
+			const { url, title, ivLink, insight } = validatedEffect.payload;
+			await env.DB.prepare('INSERT OR REPLACE INTO urls (url, title, iv_link, insight) VALUES (?, ?, ?, ?)')
+				.bind(url, title, ivLink, insight)
 				.run();
-			break;
+			// Hickey Mode: View Layer Projection (Keyed by SHA256(URL))
+			const hash = calculateHash(url);
+			await env.FACTS.put(hash, JSON.stringify({ title, ivLink, insight }), { expirationTtl: 604800 });
+			return;
 		}
 		case 'DB_WRITE_HASH': {
 			const { hash, title, ivLink } = validatedEffect.payload;
@@ -289,6 +330,11 @@ async function executeEffect(effect: any, env: Env) {
 			});
 			if (!res.ok) throw new Error(`Telegram error: ${res.status} ${await res.text()}`);
 			break;
+		}
+		case 'PUBLISH_TELEGRAPH': {
+			const { title, nodes } = validatedEffect.payload;
+			const token = env.TELEGRAPH_TOKEN || 'fa5aa2d8dbea74c2b2f05a04addcd68ec5b2f91a6aac7f8b1e2f4c5f5aba';
+			return await makeTelegraphPage(title, nodes, token);
 		}
 		case 'LOG_EVENT': {
 			const { eventType, data, chatId } = validatedEffect.payload;

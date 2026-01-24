@@ -18,6 +18,11 @@ export const InsightSchema = z.object({
 
 export type Insight = z.infer<typeof InsightSchema>;
 
+function cleanJsonResponse(text: string): string {
+    // Remove markdown code blocks if present (heuristic for Hickey Mode robustness)
+    return text.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
+}
+
 const SYSTEM_PROMPT = `
 Role: You are a Senior Equity Analyst and Portfolio Manager with a specialty in forensic fact-checking and epistemic validation.
 Task: Analyze the provided text. Your goal is not to summarize, but to synthesize *why it matters* and *what is missing*.
@@ -113,8 +118,9 @@ export async function generateFinancialInsight(text: string, apiKey: string): Pr
 
     const data: any = await response.json();
     try {
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        let content = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!content) return null;
+        content = cleanJsonResponse(content);
         const json = JSON.parse(content);
         const result = InsightSchema.safeParse(json);
         return result.success ? result.data : null;
@@ -146,8 +152,9 @@ export async function generateStockAnalysis(ticker: string, text: string, apiKey
 
     const data: any = await response.json();
     try {
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        let content = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!content) return null;
+        content = cleanJsonResponse(content);
         return JSON.parse(content);
     } catch (err) {
         return null;
@@ -194,8 +201,9 @@ export async function generateGeneralSummary(text: string, apiKey: string): Prom
 
     const data: any = await response.json();
     try {
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        let content = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!content) return null;
+        content = cleanJsonResponse(content);
         const json = JSON.parse(content);
         return json.summary;
     } catch (err) {

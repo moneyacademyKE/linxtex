@@ -1,0 +1,3 @@
+[test]
+# Mock Cloudflare environment for native Bun speed
+preload = ["./test/bun-setup.ts"]

@@ -13,3 +13,11 @@
 - [x] Implement Velocity Roadmap 4.0 (Parallelism & Speculation)
 - [x] Deploy AllTop-style Aggregator Dashboard
 - [x] Reprocess legacy links for AI Insights
+- [x] Implement Hickey Mode (De-complecting Time/Place)
+- [x] Transition to Godmode Speed (L1 KV + L2 D1)
+- [x] Configure Bun-Native test environment (High-Fidelity)
+- [x] Activate Ralph-Nano Autonomous Loop
+- [x] AI Backfill: Enrich cached facts with missing insights [x]
+- [x] Broadcast Reprocessing: Implement multi-target bulk send [x]
+- [x] Livesite: Configure links.moecapital.com as primary domain [x]
+- [x] Achieve 98%+ Test Coverage across core modules
