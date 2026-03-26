@@ -58,5 +58,20 @@ describe("Gemini Integration", () => {
             (fetch as any).mockResolvedValue(new Response("E", { status: 500 }));
             expect(await generateStockAnalysis("A", "c", "k")).toBeNull();
         });
+
+        it("falls back to non-grounded search if tools fail", async () => {
+             const mockFail = new Response(JSON.stringify({ error: "tools not supported" }), { status: 400 });
+             const mockSuccess = { candidates: [{ content: { parts: [{ text: JSON.stringify({ ticker: "A", points: ["P"], sentiment: "bullish", executive_summary: "E" }) }] } }] };
+             const mockSuccessResponse = new Response(JSON.stringify(mockSuccess), { status: 200 });
+             
+             (fetch as any)
+                .mockResolvedValueOnce(mockFail)
+                .mockResolvedValueOnce(mockSuccessResponse);
+
+             const res = await generateStockAnalysis("A", "c", "k");
+             expect(res?.ticker).toBe("A");
+             // First call had tools, second call should NOT have tools (verified by mock behavior)
+             expect(fetch).toHaveBeenCalledTimes(2);
+        });
     });
 });

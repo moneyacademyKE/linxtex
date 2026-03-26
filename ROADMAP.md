@@ -16,6 +16,7 @@ This roadmap outlines the evolution of LinxtexBot, prioritizing **Decomplection*
 - [x] **Parallel Synthesis**: Concurrent Gemini Macro + Financial analysis.
 - [x] **Aggregator Dashboard**: Public "AllTop" feed at `links.moecapital.com`.
 - [x] **Edge-Local Fact Store**: Cloudflare KV (L1) + D1 (L2) Dual-Persistence.
+- [x] **Autonomous Self-Healing**: Phase-aware retries, Janitor reconciliation, and Epistemic Correction (The Critic).
 
 ---
 
@@ -25,7 +26,7 @@ This roadmap outlines the evolution of LinxtexBot, prioritizing **Decomplection*
 | **P1** | **Direct D1 Peer Stream** | **High** | Stream updates directly to the browser via D1 changes (Cloudflare Pub/Sub). |
 | **P2** | **Voice Synthesis** | **Medium** | Generate 30-second audio "Debriefs" for complex financial articles. |
 | **P3** | **Multi-LLM Jury** | **Epistemic** | Corroborate Gemini insights with Claude or GPT-4o for high-stakes signals. |
-| **P4** | **Autonomous Self-Heal** | **Operational** | Ralph-Nano automated regression testing and dependency auditing. |
+| **P4** | **Sub-Second Streaming** | **High** | Real-time D1 updates via Cloudflare Pub/Sub for zero-latency dashboard. |
 
 ---
 *"The most effective way to be fast is to stop doing unnecessary things." — Rich Hickey*

@@ -6,7 +6,9 @@ import {
     formatInstantViewResponse,
     replaceLinksInText,
     convertToTelegraphNodes,
-    calculateHash
+    calculateHash,
+    integrateObservation,
+    decideNextEffects
 } from "../src/domain";
 
 describe("Domain Logic", () => {
@@ -101,6 +103,53 @@ describe("Domain Logic", () => {
             const { nodes } = convertToTelegraphNodes(html);
             expect(JSON.stringify(nodes)).not.toContain("script");
             expect(nodes.length).toBe(1);
+        });
+    });
+
+    describe("Hickey Orchestration (Phase-Driven)", () => {
+        it("transitions from RESOLVING to ENRICHING on CONTENT_FETCHED", () => {
+            const state = { originalUrl: 'http://a.com', url: 'http://a.com', phase: 'RESOLVING' as const };
+            const next = integrateObservation(state, { type: 'CONTENT_FETCHED', title: 'T', content: 'C', textContent: 'TC' });
+            expect(next.phase).toBe('ENRICHING');
+            expect(next.title).toBe('T');
+        });
+
+        it("transitions to VERIFYING phase after enrichment", () => {
+            const state = { 
+                originalUrl: 'http://a.com', 
+                url: 'http://a.com', 
+                phase: 'ENRICHING' as const, 
+                title: 'T', 
+                content: 'C', 
+                insight: 'I', 
+                ivLink: 'IV' 
+            };
+            const effects = decideNextEffects(state);
+            expect(effects).toContainEqual(expect.objectContaining({ type: 'VERIFY_INSIGHT' }));
+            expect(state.phase).toBe('VERIFYING');
+        });
+
+        it("transitions to PERSISTING and COMPLETE after verdict", () => {
+            const state = { 
+                originalUrl: 'http://a.com', 
+                url: 'http://a.com', 
+                phase: 'VERIFYING' as const, 
+                title: 'T', 
+                content: 'C', 
+                insight: 'I', 
+                ivLink: 'IV',
+                criticVerdict: '{"verdict":"Verified"}'
+            };
+            const effects = decideNextEffects(state);
+            expect(effects).toContainEqual(expect.objectContaining({ type: 'RECORD_INSIGHT' }));
+            expect(state.phase).toBe('COMPLETE');
+        });
+
+        it("handles ERROR_OCCURRED and terminates", () => {
+            const state = { originalUrl: 'http://a.com', url: 'http://a.com', phase: 'ENRICHING' as const };
+            const next = integrateObservation(state, { type: 'ERROR_OCCURRED', message: 'Fail' });
+            expect(next.error).toBe('Fail');
+            expect(next.phase).toBe('COMPLETE');
         });
     });
 });

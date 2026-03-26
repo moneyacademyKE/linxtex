@@ -1,18 +1,30 @@
 import { mock } from "bun:test";
 import { Database } from "bun:sqlite";
+import { vi } from "vitest";
 
 // Create a real in-memory SQLite DB for tests
 const db = new Database(":memory:");
 
-// Initialize minimal schema for tests if needed
+// Initialize minimal schema for tests to match src/index.ts
 db.run(`
     CREATE TABLE IF NOT EXISTS urls (
         url TEXT PRIMARY KEY,
         title TEXT,
         iv_link TEXT,
+        last_enriched INTEGER
+    );
+`);
+
+db.run(`
+    CREATE TABLE IF NOT EXISTS insight_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trace_id TEXT,
+        url TEXT,
+        hash TEXT,
         insight TEXT,
+        metadata TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
+    );
 `);
 
 const mockDb = {
@@ -34,7 +46,7 @@ const mockDb = {
             }
         };
     },
-    batch: (stmts: any[]) => Promise.resolve(stmts.map(() => ({ results: [] }))), // Simple batch shim
+    batch: (stmts: any[]) => Promise.resolve(stmts.map(() => ({ results: [] }))),
     exec: (sql: string) => {
         db.run(sql);
         return Promise.resolve();
@@ -45,27 +57,25 @@ mock.module("cloudflare:test", () => ({
     env: {
         DB: mockDb,
         FACTS: {
-            get: () => Promise.resolve(null),
-            put: () => Promise.resolve()
+            get: vi.fn().mockResolvedValue(null),
+            put: vi.fn().mockResolvedValue({})
+        },
+        ENRICHMENT_QUEUE: {
+            send: vi.fn().mockResolvedValue({})
         }
     },
     createExecutionContext: () => ({
         waitUntil: (p: Promise<any>) => { if (p && p.catch) p.catch(() => { }) }
     }),
     waitOnExecutionContext: () => Promise.resolve(),
-    SELF: {
-        fetch: fetch
-    }
+    SELF: { fetch: fetch }
 }));
 
 // Mock global Cloudflare objects
 // @ts-ignore
 globalThis.caches = {
     default: {
-        match: () => Promise.resolve(null),
-        put: () => Promise.resolve()
+        match: async () => null,
+        put: async () => { }
     }
 };
-
-// Mock vitest exports for bun:test compatibility
-mock.module("vitest", () => require("bun:test"));

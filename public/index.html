@@ -173,12 +173,13 @@
 <body>
     <header class="header">
         <h1>Moe Capital <span>&bull;</span> Linxtex Feed</h1>
+        <div id="vitals-bar" style="margin-top: 1rem; font-size: 0.7rem; color: var(--text-muted); display: flex; gap: 1.5rem; justify-content: center;"></div>
         <div style="margin-top: 1rem; display: flex; gap: 1rem; justify-content: center; align-items: center;">
             <button onclick="reprocess()" id="reprocess-btn"
                 style="background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.75rem; transition: all 0.2s;">
                 Reprocess Feed
             </button>
-            <span id="status"
+            <span id="reprocess-status"
                 style="font-size: 0.75rem; color: var(--accent-finance); display: none;">Reprocessing...</span>
         </div>
     </header>
@@ -188,19 +189,57 @@
     </main>
 
     <script>
-        async function fetchFeed() {
+        // --- Phase 6: Value-Oriented UI Projection (Functional) ---
+        let appState = {
+            items: [],
+            vitals: null,
+            isReprocessing: false
+        };
+
+        function setState(patch) {
+            appState = { ...appState, ...patch };
+            render();
+        }
+
+        async function refreshData() {
             try {
-                const response = await fetch('/api/feed');
-                const data = await response.json();
-                renderFeed(data);
+                const [feedRes, vitalsRes] = await Promise.all([
+                    fetch('/api/feed').then(r => r.json()),
+                    fetch('/api/vitals').then(r => r.json())
+                ]);
+                setState({ items: feedRes, vitals: vitalsRes });
             } catch (err) {
-                console.error('Feed error:', err);
-                document.getElementById('feed-container').innerHTML = '<div class="loading">Failed to load feed. Live data only.</div>';
+                console.error('Refresh Error:', err);
             }
         }
 
-        function renderFeed(items) {
+        function render() {
+            renderVitals();
+            renderFeed();
+            renderControls();
+        }
+
+        function renderVitals() {
+            const bar = document.getElementById('vitals-bar');
+            if (!appState.vitals) return;
+            const { total_links, success_rate, daily_insights } = appState.vitals;
+            bar.innerHTML = `
+                <span>Mastery: <b>${total_links}</b> links</span>
+                <span>Success: <b style="color:var(--accent-finance)">${(success_rate * 100).toFixed(1)}%</b></span>
+                <span>24h Velocity: <b>${daily_insights}</b> insights</span>
+            `;
+        }
+
+        function renderControls() {
+            const btn = document.getElementById('reprocess-btn');
+            const status = document.getElementById('reprocess-status');
+            btn.disabled = appState.isReprocessing;
+            status.style.display = appState.isReprocessing ? 'inline' : 'none';
+        }
+
+        function renderFeed() {
             const container = document.getElementById('feed-container');
+            if (appState.items.length === 0) return;
             container.innerHTML = '';
 
             const groups = {
@@ -209,22 +248,31 @@
                 general: { title: 'Global News', color: 'general', items: [] }
             };
 
-            items.forEach(item => {
+            appState.items.forEach(item => {
                 let insight = null;
+                let verdict = null;
                 try {
-                    if (item.raw_insight) insight = JSON.parse(item.raw_insight);
+                    if (item.raw_insight) {
+                        const parsed = JSON.parse(item.raw_insight);
+                        insight = parsed;
+                        // Use the persisted verdict from insight_logs if available, 
+                        // fallback to metadata if it's there
+                        if (item.critic_verdict) verdict = JSON.parse(item.critic_verdict);
+                        else if (parsed.metadata?.criticVerdict) verdict = JSON.parse(parsed.metadata.criticVerdict);
+                    }
                 } catch (e) { }
 
                 const url = new URL(item.url);
                 const isTwitter = url.hostname.includes('twitter.com') || url.hostname.includes('x.com') || url.hostname.includes('nitter');
-                const isFinance = insight && (insight.tags.includes('Equity') || insight.tickers.length > 0 || insight.relevance_score > 70);
+                const isFinance = insight && (insight.tags?.includes('Equity') || insight.tickers?.length > 0 || insight.relevance_score > 70);
 
-                if (isFinance) groups.finance.items.push({ ...item, insight });
-                else if (isTwitter) groups.twitter.items.push({ ...item, insight });
-                else groups.general.items.push({ ...item, insight });
+                const data = { ...item, insight, verdict };
+                if (isFinance) groups.finance.items.push(data);
+                else if (isTwitter) groups.twitter.items.push(data);
+                else groups.general.items.push(data);
             });
 
-            Object.values(groups).forEach(group => {
+            Object.entries(groups).forEach(([key, group]) => {
                 const col = document.createElement('div');
                 col.className = 'column';
                 col.innerHTML = `
@@ -236,23 +284,16 @@
                                 <span>${new URL(item.url).hostname}</span>
                                 <span>${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
+                            ${item.verdict ? `
+                                <div class="verdict" style="margin-top: 0.5rem; font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; display: inline-block; background: rgba(16, 185, 129, 0.1); color: var(--accent-finance); border: 1px solid rgba(16, 185, 129, 0.2);">
+                                    VERIFIED: ${item.verdict.verdict} (${item.verdict.confidence_score}%)
+                                </div>
+                            ` : ''}
                             ${item.insight ? `
-                                <div class="insight">
+                                <div class="insight" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
                                     ${item.insight.summary.split('.')[0]}...
                                 </div>
                             ` : ''}
-                        </a>
-                    `).join('')}
-                `;
-                col.innerHTML = `
-                    <div class="column-header head-${group.color}"><i></i> ${group.title}</div>
-                    ${group.items.map(item => `
-                        <a href="${item.iv_link}" class="card" target="_blank">
-                            <div class="title">${item.title}</div>
-                            <div class="source">
-                                <span>${new URL(item.url).hostname}</span>
-                                <span>${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            </div>
                         </a>
                     `).join('')}
                 `;
@@ -261,25 +302,21 @@
         }
 
         async function reprocess() {
-            const btn = document.getElementById('reprocess-btn');
-            const status = document.getElementById('status');
-            btn.disabled = true;
-            status.style.display = 'inline';
+            setState({ isReprocessing: true });
             try {
                 await fetch('/api/reprocess');
                 setTimeout(() => {
-                    status.style.display = 'none';
-                    btn.disabled = false;
-                    fetchFeed();
+                    setState({ isReprocessing: false });
+                    refreshData();
                 }, 5000);
             } catch (err) {
-                btn.disabled = false;
-                status.innerText = 'Failed';
+                setState({ isReprocessing: false });
             }
         }
 
-        fetchFeed();
-        setInterval(fetchFeed, 60000); // Refresh every minute
+        // Initial Boot
+        refreshData();
+        setInterval(refreshData, 60000);
     </script>
 </body>
 

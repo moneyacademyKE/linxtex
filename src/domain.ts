@@ -2,10 +2,32 @@ import { parseHTML } from 'linkedom';
 import { z } from 'zod';
 import PARSING_RULES from './parsing_rules.json';
 
+// v1.0.5 - Ultimate Decoupled Orchestration
+
 // --- Phase 2: Schema First ---
 
+export const LinkInsightSchema = z.object({
+    url: z.string(),
+    title: z.string(),
+    ivLink: z.string(),
+    insight: z.string(),
+    hash: z.string().optional(),
+    metadata: z.object({
+        model: z.string().optional(),
+        timestamp: z.number().optional(),
+        traceId: z.string().optional(),
+        isTwitter: z.boolean().optional(),
+        perspective: z.string().optional(),
+        retryCount: z.number().optional(),
+        criticVerdict: z.string().optional(),
+        healingHints: z.string().optional()
+    }).passthrough().optional()
+});
+
+export type LinkInsight = z.infer<typeof LinkInsightSchema>;
+
 export const ArticleSchema = z.object({
-    title: z.string().min(1),
+    title: z.string(),
     content: z.string(),
     textContent: z.string().optional(),
     url: z.string().optional(),
@@ -14,103 +36,212 @@ export const ArticleSchema = z.object({
 
 export type Article = z.infer<typeof ArticleSchema>;
 
-export type LegacyTelegraphNode = string | {
-    tag: string;
-    attrs?: Record<string, string>;
-    children?: LegacyTelegraphNode[];
-};
-
-export const TelegraphNodeSchema: z.ZodType<LegacyTelegraphNode> = z.lazy(() =>
+export const TelegraphNodeSchema: z.ZodType<any> = z.lazy(() =>
     z.union([
         z.string(),
         z.object({
             tag: z.string(),
             attrs: z.record(z.string(), z.string()).optional(),
-            children: z.array(TelegraphNodeSchema).optional()
+            children: z.array(z.any()).optional()
         })
     ])
 );
 
-export type TelegraphNode = z.infer<typeof TelegraphNodeSchema>;
-
-// --- Effects as Values (Hickey Dispatched) ---
-
 export const EffectSchema = z.union([
-    z.object({
-        type: z.literal('SEND_TELEGRAM'),
-        payload: z.object({
-            chatId: z.number(),
-            text: z.string(),
-            isHtml: z.boolean().optional()
-        })
-    }),
-    z.object({
-        type: z.literal('PUBLISH_TELEGRAPH'),
-        payload: z.object({
-            title: z.string(),
-            nodes: z.array(TelegraphNodeSchema)
-        })
-    }),
-    z.object({
-        type: z.literal('DB_WRITE_URL'),
-        payload: z.object({
-            url: z.string(),
-            title: z.string(),
-            ivLink: z.string(),
-            insight: z.string().optional()
-        })
-    }),
-    z.object({
-        type: z.literal('DB_WRITE_HASH'),
-        payload: z.object({
-            hash: z.string(),
-            title: z.string(),
-            ivLink: z.string()
-        })
-    }),
-    z.object({
-        type: z.literal('EDIT_TELEGRAM_MESSAGE'),
-        payload: z.object({
-            chatId: z.number(),
-            messageId: z.number(),
-            text: z.string(),
-            isHtml: z.boolean().optional()
-        })
-    }),
-    z.object({
-        type: z.literal('EDIT_TELEGRAM_CAPTION'),
-        payload: z.object({
-            chatId: z.number(),
-            messageId: z.number(),
-            caption: z.string(),
-            isHtml: z.boolean().optional()
-        })
-    }),
-    z.object({
-        type: z.literal('LOG_EVENT'),
-        payload: z.object({
-            eventType: z.string(),
-            data: z.any(),
-            chatId: z.number().optional()
-        })
-    }),
-    z.object({
-        type: z.literal('LOG_INSIGHT'),
-        payload: z.object({
-            contentHash: z.string(),
-            rawInsight: z.string(),
-            relevanceScore: z.number()
-        })
-    })
+    z.object({ type: z.literal('SEND_TELEGRAM'), payload: z.any() }),
+    z.object({ type: z.literal('PUBLISH_TELEGRAPH'), payload: z.any() }),
+    z.object({ type: z.literal('RECORD_INSIGHT'), payload: LinkInsightSchema }),
+    z.object({ type: z.literal('EDIT_TELEGRAM_MESSAGE'), payload: z.any() }),
+    z.object({ type: z.literal('EDIT_TELEGRAM_CAPTION'), payload: z.any() }),
+    z.object({ type: z.literal('LOG_EVENT'), payload: z.any() }),
+    z.object({ type: z.literal('LOG_INSIGHT'), payload: z.any() }),
+    z.object({ type: z.literal('FETCH_LINK'), payload: z.any() }),
+    z.object({ type: z.literal('GENERATE_METADATA'), payload: z.any() }),
+    z.object({ type: z.literal('GENERATE_DEEP_INSIGHT'), payload: z.any() }),
+    z.object({ type: z.literal('VERIFY_INSIGHT'), payload: z.any() }),
+    z.object({ type: z.literal('RESOLVE_REDIRECTS'), payload: z.any() })
 ]);
 
 export type Effect = z.infer<typeof EffectSchema>;
 
-// --- Pure Transformations (The Core) ---
+export type MachinePhase = 'RESOLVING' | 'ENRICHING' | 'VERIFYING' | 'PERSISTING' | 'COMPLETE';
+
+export type ProcessingState = {
+    originalUrl: string;
+    url: string;
+    phase: MachinePhase;
+    traceId?: string;
+    perspective?: string;
+    parsingRules?: any;
+    title?: string;
+    content?: string;
+    textContent?: string;
+    hash?: string;
+    ivLink?: string;
+    insight?: string;
+    stockAnalysis?: string;
+    financialData?: any;
+    tickers?: string[];
+    criticVerdict?: string;
+    error?: string;
+    retryCount?: number;
+    lastError?: string;
+    healingHints?: string;
+    metadataAttempted?: boolean;
+    deepInsightAttempted?: boolean;
+};
+
+export type Observation = 
+    | { type: 'REDIRECT_RESOLVED', url: string }
+    | { type: 'CONTENT_FETCHED', title: string, content: string, textContent: string }
+    | { type: 'INSIGHTS_GENERATED', insight: string, rawInsight: string, relevanceScore: number, financialData?: any }
+    | { type: 'STOCK_ANALYSIS_GENERATED', analysis: string }
+    | { type: 'VERDICT_GENERATED', verdict: string }
+    | { type: 'IV_LINK_GENERATED', ivLink: string }
+    | { type: 'PERSISTENCE_COMPLETE' }
+    | { type: 'ERROR_OCCURRED', message: string, isTransient?: boolean };
+
+// --- Pure Orchestration ---
+
+export function integrateObservation(state: ProcessingState, observation: Observation): ProcessingState {
+    const next = { ...state };
+    switch (observation.type) {
+        case 'REDIRECT_RESOLVED':
+            next.url = observation.url;
+            next.phase = 'RESOLVING';
+            break;
+        case 'CONTENT_FETCHED':
+            next.title = observation.title;
+            next.content = observation.content;
+            next.textContent = observation.textContent;
+            next.phase = 'ENRICHING';
+            break;
+        case 'INSIGHTS_GENERATED':
+            next.insight = observation.insight;
+            next.financialData = observation.financialData;
+            next.metadataAttempted = true;
+            break;
+        case 'STOCK_ANALYSIS_GENERATED':
+            next.stockAnalysis = observation.analysis;
+            break;
+        case 'VERDICT_GENERATED':
+            next.criticVerdict = observation.verdict;
+            break;
+        case 'IV_LINK_GENERATED':
+            next.ivLink = observation.ivLink;
+            break;
+        case 'PERSISTENCE_COMPLETE':
+            next.phase = 'COMPLETE';
+            break;
+        case 'ERROR_OCCURRED':
+            if (observation.isTransient) {
+                next.lastError = observation.message;
+                next.retryCount = (state.retryCount || 0) + 1;
+            } else {
+                next.error = observation.message;
+                next.phase = 'COMPLETE';
+            }
+            break;
+    }
+
+    if (next.phase === 'ENRICHING' && next.insight) next.phase = 'VERIFYING';
+    if (next.phase === 'VERIFYING' && next.criticVerdict) next.phase = 'PERSISTING';
+    return next;
+}
+
+// --- Rule Definitions (Hickey: Functional Intent) ---
+
+export type Rule = (state: ProcessingState) => Effect[];
+
+const discoveryRule: Rule = (state) => {
+    if (state.phase === 'RESOLVING' && !state.content) return [{ type: 'FETCH_LINK', payload: { url: state.url } }];
+    return [];
+};
+
+const metadataRule: Rule = (state) => {
+    if (state.phase === 'ENRICHING' && !state.insight && !state.metadataAttempted) {
+        const content = state.textContent || state.content || '';
+        if (content) return [{ type: 'GENERATE_METADATA', payload: { content } }];
+    }
+    return [];
+};
+
+const synthesisRule: Rule = (state) => {
+    if (state.phase === 'ENRICHING' && state.insight && !state.stockAnalysis) {
+        const financial = state.financialData;
+        if (financial && (financial.tickers?.length > 0)) {
+            return [{ type: 'GENERATE_DEEP_INSIGHT', payload: { content: state.textContent || state.content || '' } }];
+        }
+    }
+    return [];
+};
+
+const publishingRule: Rule = (state) => {
+    // Intent: We want an Instant View page if we have content and insight
+    if (state.content && state.insight && !state.ivLink) {
+        return [{ type: 'PUBLISH_TELEGRAPH', payload: { title: state.title || 'Untitled', content: state.content, baseUrl: state.url } }];
+    }
+    return [];
+};
+
+const criticRule: Rule = (state) => {
+    if (state.phase === 'VERIFYING' && !state.criticVerdict) {
+        return [{ type: 'VERIFY_INSIGHT', payload: { content: state.textContent || state.content || '', insight: state.insight || '' } }];
+    }
+    return [];
+};
+
+const persistenceRule: Rule = (state) => {
+    if (state.phase === 'PERSISTING' && state.title && state.ivLink && state.insight) {
+        return [{ 
+            type: 'RECORD_INSIGHT', 
+            payload: {
+                url: state.url,
+                title: state.title,
+                ivLink: state.ivLink,
+                insight: state.stockAnalysis || state.insight,
+                hash: state.hash,
+                metadata: {
+                    model: 'gemini-3.1-flash-lite-preview',
+                    timestamp: Date.now(),
+                    traceId: state.traceId,
+                    perspective: state.perspective,
+                    retryCount: state.retryCount || 0
+                }
+            }
+        }];
+    }
+    return [];
+};
+
+export function decideNextEffects(state: ProcessingState): Effect[] {
+    if (state.phase === 'COMPLETE' || state.error) return [];
+    const rules: Rule[] = [discoveryRule, metadataRule, synthesisRule, publishingRule, criticRule, persistenceRule];
+    const effects = rules.flatMap(rule => rule(state));
+    // Terminal fallback
+    if (state.phase === 'PERSISTING' && effects.length === 0) state.phase = 'COMPLETE';
+    return effects;
+}
+
+// --- Transformation Utilities ---
 
 export function detectUrls(text: string): string[] {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.match(urlRegex) || [];
+    const urls: string[] = [];
+    let match;
+    while ((match = urlRegex.exec(text)) !== null) urls.push(match[1]);
+    return urls;
+}
+
+export function extractUrlsFromEntities(text: string, entities?: any[]): string[] {
+    const urls = new Set<string>();
+    if (entities) {
+        for (const entity of entities) {
+            if (entity.type === 'url') urls.add(text.substring(entity.offset, entity.offset + entity.length));
+            else if (entity.type === 'text_link') urls.add(entity.url);
+        }
+    }
+    return Array.from(urls);
 }
 
 export function isHomepage(url: string): boolean {
@@ -122,17 +253,65 @@ export function isHomepage(url: string): boolean {
     }
 }
 
-export function transformToNitter(url: string, instance: string = 'nitter.net'): string {
+export async function calculateHash(content: string): Promise<string> {
+    const msgUint8 = new TextEncoder().encode(content);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+export function convertToTelegraphNodes(html: string, baseUrl?: string, rules: any = PARSING_RULES): { nodes: any[] } {
+    const { window } = parseHTML(`<!DOCTYPE html><html><body>${html}</body></html>`);
+    const body = window.document.body;
+    if (!body) return { nodes: [] };
+    const state = { tickers: new Set<string>(), rules, baseUrl };
+    const nodes = Array.from(body.childNodes)
+        .map(n => pipeline(n, state))
+        .flat()
+        .filter(n => {
+            if (typeof n === 'string') return n.trim().length > 0;
+            return n !== null;
+        });
+    return { nodes };
+}
+
+function normalizeUrl(url: string, baseUrl?: string): string {
+    if (!baseUrl) return url;
     try {
-        const parsed = new URL(url);
-        if (parsed.hostname === 'twitter.com' || parsed.hostname === 'x.com' || parsed.hostname === 'www.twitter.com' || parsed.hostname === 'www.x.com') {
-            parsed.hostname = instance;
-            return parsed.toString();
-        }
-        return url;
+        return new URL(url, baseUrl).toString();
     } catch {
         return url;
     }
+}
+
+function pipeline(domNode: any, state: { tickers: Set<string>, rules: any, baseUrl?: string }): any {
+    if (domNode.nodeType === 3) return domNode.textContent || '';
+    if (domNode.nodeType !== 1) return null;
+    const rules = state.rules || PARSING_RULES;
+    let tag = (domNode.tagName || '').toLowerCase();
+    if (rules.transformations && rules.transformations[tag] !== undefined) tag = rules.transformations[tag];
+    if (!tag || !rules.allowedTags.includes(tag)) return null;
+    const attrs: any = {};
+    for (const attr of Array.from(domNode.attributes || [])) {
+        const a = attr as any;
+        if (rules.allowedAttributes.includes(a.name)) {
+            let val = a.value;
+            if ((tag === 'img' || tag === 'video' || tag === 'iframe') && a.name === 'src') {
+                val = normalizeUrl(val, state.baseUrl);
+            } else if (tag === 'a' && a.name === 'href') {
+                val = normalizeUrl(val, state.baseUrl);
+            }
+            attrs[a.name] = val;
+        }
+    }
+    const children = Array.from(domNode.childNodes)
+        .map(n => pipeline(n, state))
+        .flat()
+        .filter(c => c !== null && c !== '');
+    const node: any = { tag };
+    if (Object.keys(attrs).length > 0) node.attrs = attrs;
+    if (children.length > 0) node.children = children;
+    return node;
 }
 
 export function formatInstantViewResponse(title: string, originalUrl: string, ivLink: string): string {
@@ -140,105 +319,4 @@ export function formatInstantViewResponse(title: string, originalUrl: string, iv
     return `<b>${title}</b>\n\nfrom ${domain}\n${ivLink}`;
 }
 
-export function replaceLinksInText(text: string, linkMap: Record<string, string>): string {
-    let newText = text;
-    for (const [originalUrl, ivLink] of Object.entries(linkMap)) {
-        newText = newText.replace(originalUrl, ivLink);
-    }
-    return newText;
-}
-
-export const WELCOME_MESSAGE = `Hi, send me any message which contains a links:
-
-- From a channel/group by "Forward" a message links.
-- By a direct text message links to me.`;
-
-// --- Transducers: Composable Transformations ---
-
-type Transducer = (node: any) => any | null;
-
-const sanitizeTag: Transducer = (domNode) => {
-    if (domNode.nodeType === 3) return domNode.textContent || '';
-    if (domNode.nodeType !== 1) return null;
-
-    let tag = domNode.tagName.toLowerCase();
-
-    // Data-Driven Transformation
-    const transformMap: any = PARSING_RULES.transformations;
-    if (transformMap[tag]) {
-        tag = transformMap[tag];
-    } else if (transformMap[tag] === null) {
-        return null; // Discarded
-    }
-
-    if (!PARSING_RULES.allowedTags.includes(tag)) return null;
-
-    return { tag, domNode };
-};
-
-const cleanAttributes: Transducer = (result) => {
-    if (typeof result === 'string' || result === null) return result;
-
-    const { tag, domNode } = result;
-    const attrs: Record<string, string> = {};
-
-    for (const attr of domNode.attributes) {
-        if (PARSING_RULES.allowedAttributes.includes(attr.name)) {
-            attrs[attr.name] = attr.value;
-        }
-    }
-
-    return { tag, attrs, domNode };
-};
-
-
-// The Pipeline (Manual Dispatch Transducer)
-function pipeline(domNode: any, state: { tickers: Set<string> }): any {
-    if (domNode.nodeType === 3) { // Text Node - Ticker Extraction
-        const text = domNode.textContent || '';
-        const tickerRegex = /\$([A-Z]{1,10})/g;
-        let match;
-        while ((match = tickerRegex.exec(text)) !== null) {
-            state.tickers.add(match[1]);
-        }
-    }
-
-    let res = sanitizeTag(domNode);
-    res = cleanAttributes(res);
-
-    // Recursive transform with state passing
-    if (typeof res === 'string' || res === null) return res;
-    const { tag, attrs, domNode: originalDom } = res;
-    const children = Array.from(originalDom.childNodes)
-        .map(n => pipeline(n, state))
-        .flat()
-        .filter(c => c !== null && c !== '');
-
-    const node: any = { tag };
-    if (Object.keys(attrs).length > 0) node.attrs = attrs;
-    if (children.length > 0) node.children = children;
-
-    return node;
-}
-
-export function convertToTelegraphNodes(html: string): { nodes: TelegraphNode[], tickers: string[] } {
-    // Ensure we have a body by wrapping snippet if missing html tag
-    const fullHtml = html.includes("<html") ? html : `<html><body>${html}</body></html>`;
-    const { window } = parseHTML(fullHtml);
-    const body = window.document.body;
-    const state = { tickers: new Set<string>() };
-
-    const nodes = Array.from(body.childNodes)
-        .map(n => pipeline(n, state))
-        .flat()
-        .filter((n): n is TelegraphNode => n !== null && n !== '');
-
-    return { nodes, tickers: Array.from(state.tickers) };
-}
-
-export async function calculateHash(text: string): Promise<string> {
-    const msgUint8 = new TextEncoder().encode(text);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
+export const WELCOME_MESSAGE = `Welcome to LinxtexBot! 🤖\n\nSend me any link, and I will enrich it with AI-powered insights and an Instant View page.`;

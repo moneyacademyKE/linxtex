@@ -14,36 +14,42 @@
 	"assets": {
 		"directory": "./public"
 	},
+/*
 	"routes": [
 		{
 			"pattern": "links.moecapital.com",
 			"custom_domain": true
 		}
 	],
+*/
 	"observability": {
 		"enabled": true
 	},
 	"vars": {
-		"TELEGRAM_BOT_TOKEN": "8265431604:AAEXyEQj_qwlH-Xt8n3dAlrZrTPyvtsM1bQ",
-		"GEMINI_API_KEY": "AIzaSyAwjmKmQt97X-sQYQx1iCPu64WGasd5qgA",
-		"TELEGRAPH_TOKEN": "fa5aa2d8dbea74c2b2f05a04addcd68ec5b2f91a6aac7f8b1e2f4c5f5aba",
-		"TWITTER_BEARER_TOKEN": "AAAAAAAAAAAAAAAAAAAAABk05wEAAAAAaQQR58Kzods8YMHZ46M7KUvIQiM%3Dp5TxjlOy2UP877jLK5bKz9rYLgG3Em749UYkJfcgHy27ztW3gN",
-		"BROADCAST_CHAT_ID": "-1002254316040,8265431604"
+		// Moving sensitive keys to Cloudflare Secrets (wrangler secret put)
 	},
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "iv-cache",
-			"database_id": "9cdfcadb-595d-4ae7-8733-5e8f011752fc"
+			"database_id": "6c9fcdc6-8248-4d3f-a197-979681c33415"
 		}
 	],
 	"kv_namespaces": [
 		{
 			"binding": "FACTS",
-			"id": "e089fb4e3edd45d3b17eec991a4123c4"
+			"id": "bbee4698127744f4adb21656dca0ffef"
 		}
 	],
 	"browser": {
 		"binding": "BROWSER"
+	},
+	"queues": {
+		"producers": [
+			{ "binding": "ENRICHMENT_QUEUE", "queue": "linxtex-enrichment" }
+		],
+		"consumers": [
+			{ "queue": "linxtex-enrichment", "max_batch_size": 1 }
+		]
 	}
 }

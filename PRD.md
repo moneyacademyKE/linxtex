@@ -13,6 +13,8 @@ The primary goal of **LinxtexBot** is to enhance the user experience on Telegram
 - **De-complected Ingest**: < 5ms response time for webhook updates.
 - **Projection Dashboard**: High-velocity aggregator for world signals.
 - **Epistemic Engine**: Speculative parallelism for concurrent AI analysis.
+- **Autonomic Self-Healing**: De-complecting error recovery with phase-aware retries and AI-driven "Critic" correction.
+- **Dual Persistence**: Sequential storage (KV View Layer -> D1 System of Record).
 
 ## 4. Technical Constraints
 - **Runtime**: **Bun**.

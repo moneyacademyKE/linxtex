@@ -67,12 +67,12 @@ Constraint: Return strictly valid JSON. No markdown backticks.
 const STOCK_ANALYSIS_PROMPT = `
 Role: You are a High-Conviction Investment Analyst.
 Task: Analyze [Ticker] or company using the 13-point framework below.
-Use only verifiable, factual information. Be concise, analytical, and concrete.
+Use only verifiable, factual information. Use the provided Google Search tool to fetch the latest stock price, 52-week range, market cap, and recent relevant news for [Ticker] before processing.
 
 REQUIRED OUTPUT STRUCTURE (JSON):
 {
   "ticker": "Ticker Symbol",
-  "executive_summary": "150-200 words on how they make money, quality, edge, risks. End with descriptive one-liner.",
+  "executive_summary": "150-200 words on how they make money, quality, edge, risks. Include current price and recent performance. End with descriptive one-liner.",
   "points": [
     "1. What They Sell and Who Buys: ...",
     "2. How They Make Money: ...",
@@ -95,30 +95,57 @@ Tone: Analytical, neutral, precise.
 Constraint: Return strictly valid JSON. No markdown backticks.
 `;
 
-export async function generateFinancialInsight(text: string, apiKey: string): Promise<Insight | null> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
-
-    const response = await fetch(url, {
+async function callGemini(url: string, body: any): Promise<any | null> {
+    let response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [
-                { role: 'user', parts: [{ text: `System Prompt: ${SYSTEM_PROMPT}\n\nUser Input Topic: ${text}` }] }
-            ],
-            generationConfig: {
-                response_mime_type: 'application/json'
-            }
-        })
+        body: JSON.stringify(body)
     });
 
+    // Fallback: If grounding (tools) fails, retry without tools
+    if (!response.ok && body.tools) {
+        console.warn(`Gemini API grounding failed (${response.status}), retrying without tools...`);
+        const { tools, ...bodyWithoutTools } = body;
+        response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bodyWithoutTools)
+        });
+    }
+
     if (!response.ok) {
-        console.error(`Gemini Insight API error: ${response.status} ${await response.text()}`);
+        const errorText = await response.text();
+        return { error: `Gemini API error: ${response.status} ${errorText}` };
+    }
+
+    return await response.json();
+}
+
+export async function generateFinancialInsight(text: string, apiKey: string, model: string = 'gemini-3.1-flash-lite-preview', perspective: string = 'default'): Promise<Insight | null> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const perspectiveInstructions = perspective !== 'default' 
+        ? `\n\nIV. PERSPECTIVE OVERRIDE: Focus your synthesis through the lens of: ${perspective}. Adjust your "ANALYSIS" and "SENTIMENT" accordingly.`
+        : "";
+
+    const data = await callGemini(url, {
+        contents: [
+            { role: 'user', parts: [{ text: `System Prompt: ${SYSTEM_PROMPT}${perspectiveInstructions}\n\nUser Input Topic: ${text}` }] }
+        ],
+        // Disabling search grounding as it conflicts with JSON schema mode in some Worker environments
+        generationConfig: {
+            response_mime_type: 'application/json'
+        }
+    });
+
+    if (!data || data.error) {
+        console.error('[GEMINI] API Error:', data?.error || 'No data');
         return null;
     }
 
-    const data: any = await response.json();
     try {
         let content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        console.log(`[GEMINI] Raw Response: ${content?.substring(0, 100)}...`);
         if (!content) return null;
         content = cleanJsonResponse(content);
         const json = JSON.parse(content);
@@ -129,28 +156,21 @@ export async function generateFinancialInsight(text: string, apiKey: string): Pr
     }
 }
 
-export async function generateStockAnalysis(ticker: string, text: string, apiKey: string): Promise<any | null> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+export async function generateStockAnalysis(ticker: string, text: string, apiKey: string, model: string = 'gemini-3.1-flash-lite-preview'): Promise<any | null> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [
-                { role: 'user', parts: [{ text: `System Prompt: ${STOCK_ANALYSIS_PROMPT}\n\nTarget Ticker: ${ticker}\n\nContext: ${text}` }] }
-            ],
-            generationConfig: {
-                response_mime_type: 'application/json'
-            }
-        })
+    const data = await callGemini(url, {
+        contents: [
+            { role: 'user', parts: [{ text: `System Prompt: ${STOCK_ANALYSIS_PROMPT}\n\nTarget Ticker: ${ticker}\n\nContext: ${text}` }] }
+        ],
+        tools: [{ google_search: {} }],
+        generationConfig: {
+            response_mime_type: 'application/json'
+        }
     });
 
-    if (!response.ok) {
-        console.error(`Gemini Stock API error: ${response.status} ${await response.text()}`);
-        return null;
-    }
+    if (!data) return null;
 
-    const data: any = await response.json();
     try {
         let content = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!content) return null;
@@ -173,8 +193,26 @@ Structure:
 Constraint: Provide a 3-5 sentence summary for short content (tweets), and up to 10 sentences for longer articles. No markdown backticks. Return the summary as a raw string inside a JSON object: {"summary": "..."}.
 `;
 
-export async function generateGeneralSummary(text: string, apiKey: string): Promise<string | null> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+const CRITIC_PROMPT = `
+Role: You are a Forensic Financial Auditor and Epistemic Critic.
+Task: Critically evaluate the provided "Generated Insight" against the "Source Content".
+Your goal is to identify:
+1. Hallucinations: Claims made in the insight that are NOT supported by the source.
+2. Omissions: Critical market-moving facts in the source that were missed.
+3. Logical Leaps: Speculation presented as fact.
+
+REQUIRED OUTPUT (JSON):
+{
+  "verdict": "Verified | Challenged | Hallucinated",
+  "criticism": "Detailed explanation of findings or 'No major issues found'.",
+  "confidence_score": 0-100
+}
+
+Constraint: Return strictly valid JSON. No markdown backticks.
+`;
+
+export async function generateGeneralSummary(text: string, apiKey: string, model: string = 'gemini-3.1-flash-lite-preview'): Promise<string | null> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout
@@ -206,6 +244,30 @@ export async function generateGeneralSummary(text: string, apiKey: string): Prom
         content = cleanJsonResponse(content);
         const json = JSON.parse(content);
         return json.summary;
+    } catch (err) {
+        return null;
+    }
+}
+
+export async function verifyInsight(sourceText: string, insightText: string, apiKey: string, model: string = 'gemini-3.1-flash-lite-preview'): Promise<any | null> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const data = await callGemini(url, {
+        contents: [
+            { role: 'user', parts: [{ text: `System Prompt: ${CRITIC_PROMPT}\n\nSource Content: ${sourceText}\n\nGenerated Insight: ${insightText}` }] }
+        ],
+        generationConfig: {
+            response_mime_type: 'application/json'
+        }
+    });
+
+    if (!data) return null;
+
+    try {
+        let content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!content) return null;
+        content = cleanJsonResponse(content);
+        return JSON.parse(content);
     } catch (err) {
         return null;
     }

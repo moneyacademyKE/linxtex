@@ -45,19 +45,34 @@ export async function extractContent(url: string, browserBinding?: any): Promise
     let articleData = reader.parse();
 
     if (!articleData) {
-        console.log(`Readability failed for ${url}, using raw text fallback`);
+        let fallbackTitle = 'Untitled Resource';
+        try {
+            const pathParts = new URL(url).pathname.split('/');
+            const filename = pathParts[pathParts.length - 1];
+            if (filename) fallbackTitle = filename;
+        } catch {}
+
         articleData = {
-            title: window.document.title || 'Untitled Page',
+            title: window.document.title || fallbackTitle,
             content: window.document.body.innerHTML,
-            textContent: window.document.body.textContent || ''
+            textContent: window.document.body.textContent || '',
+            length: 0,
+            excerpt: '',
+            byline: '',
+            dir: '',
+            siteName: '',
+            lang: '',
+            publishedTime: ''
         };
     }
 
+    const data = articleData as any;
+
     // Validate against schema
     return ArticleSchema.parse({
-        title: articleData.title,
-        content: articleData.content,
-        textContent: articleData.textContent,
+        title: data.title || 'Untitled Resource',
+        content: data.content || '',
+        textContent: data.textContent || '',
         url: finalUrl
     });
 }

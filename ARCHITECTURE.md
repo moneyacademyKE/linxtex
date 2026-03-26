@@ -1,39 +1,48 @@
-## 1. System Overview
-LinxtexBot follows the **Hickey Mode** architecture: **Simple Made Easy**. It de-complects time (ingestion vs processing) and treats the internet as a **Database of Immutable Facts**.
+# LinxtexBot Architecture: De-complectated Enrichment
 
-### 1.1 Core Principles
-- **De-complecting Time**: Webhooks are ingested instantly; processing happens in a background log/context.
-- **The Value of Values**: URLs are immutable keys. Processing a URL once creates a permanent "Fact".
-- **Dual-Persistence Persistence Strategy**:
-    - **KV (Key-Value) - The View Layer**: Stores final, immutable projections: `SHA256(URL) -> JSON { ivLink, insight }`. Optimized for Godmode speed (<10ms).
-    - **D1 (SQLite) - The System of Record**: Stores "Events" and relational data (history, trends, dashboard signals).
-- **Projections**: The dashboard is a projection of the fact database, served via a high-velocity cache.
+This document describes the high-reliability orchestration engine powering LinxtexBot.
 
-## 2. Component Diagram
+## 1. The Core Loop (Hickey Mode)
+
+The system follows a pure functional core / imperative shell pattern.
+
 ```mermaid
 graph TD
-    TG[Telegram] -->|Webhook| W[Worker]
-    W -->|Parallel| G[Gemini AI]
-    W -->|Sync Check| D1[(D1 Cache)]
-    W -->|Async| EXT[Extraction Engine]
-    EXT -->|Nodes| TP[Telegra.ph]
-    W -->|Serve| WEB[Public Dashboard]
-    WEB -->|JSON| W
-    G -->|Insights| W
-    TP -->|Link| W
-    W -->|Reply| TG
+    Update[Telegram Update] --> Worker[Cloudflare Worker]
+    Worker --> Queue[Enrichment Queue]
+    Queue --> Orchestrator[resolveLink Orchestrator]
+    
+    subgraph "Pure Domain Core (domain.ts)"
+        Orchestrator --> State[ProcessingState]
+        State --> Decider[decideNextEffects]
+        Decider --> Effects[Effect Data List]
+    end
+    
+    subgraph "Imperative Shell (index.ts)"
+        Effects --> Executor[executeEffect]
+        Executor --> APIs[Gemini/Telegraph/D1/KV]
+        APIs --> Observations[Observation Data]
+        Observations --> Integrator[integrateObservation]
+        Integrator --> State
+    end
+    
+    State --> Condition{Phase == COMPLETE?}
+    Condition -- No --> Orchestrator
+    Condition -- Yes --> Done[Enrichment Finished]
 ```
 
-## 3. Modules
-- `src/index.ts`: Entry point, API routes, and update handler.
-- `src/domain.ts`: Core transducers and schema definitions.
-- `src/parser.ts`: Article extraction and sanitization.
-- `src/gemini.ts`: Epistemic synthesis (Macro/Finance).
-- `src/twitter.ts`: Twitter API and redirect resolution.
-- `src/projections.ts`: Formatting and stats delivery.
-- `public/index.html`: Aggregator dashboard frontend.
+## 2. State Phases
 
-## 4. Development & Testing
-- **Runtime**: Native **Bun**. No Node.js dependencies in production.
-- **Testing**: High-fidelity local testing via `bun test` using a `bun:sqlite` in-memory shim for D1.
-- **Protocol**: Autonomous monitoring via **Ralph-Nano** (Godmode).
+1.  **RESOLVING**: Unwrapping redirects and identifying the primary source URL.
+2.  **ENRICHING**: Fetching content and performing initial AI synthesis (General/Financial).
+3.  **VERIFYING**: Running the "Critic" tier to audit AI assertions against source content.
+4.  **PERSISTING**: Committing facts to D1 (Relational) and KV (View Cache).
+5.  **COMPLETE**: Terminal state.
+
+## 3. Epistemic Integrity
+
+The `Critic` tier ensures that every insight published to the "View Layer" is grounded in the source text. If a hallucination is detected, the system transitions back to `HEALING` to refine the output before persistence.
+
+## 4. Testability
+
+By decoupling the `Executor` from the `Orchestrator`, we achieve 100% test coverage using an in-memory "Digital Twin" of the infrastructure.

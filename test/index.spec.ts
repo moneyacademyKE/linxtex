@@ -76,17 +76,18 @@ describe('Linxtex Bot Direct Logic Spec (Final)', () => {
 	});
 
 	it('covers executeEffect switch types', async () => {
-		await executeEffect({ type: 'DB_WRITE_URL', payload: { url: 'http://u', title: 't', ivLink: 'iv' } }, env);
+		await executeEffect({ type: 'RECORD_INSIGHT', payload: { url: 'http://u', title: 't', ivLink: 'iv', insight: 'in', metadata: { traceId: 't1' } } }, env as any);
 		(fetch as any).mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, result: { url: 'u' } }), text: () => Promise.resolve('OK') });
-		await executeEffect({ type: 'EDIT_TELEGRAM_MESSAGE', payload: { chatId: 1, messageId: 1, text: 't' } }, env);
-		await executeEffect({ type: 'PUBLISH_TELEGRAPH', payload: { title: 't', nodes: [] } }, env);
+		await executeEffect({ type: 'GENERATE_METADATA', payload: { content: 'c' } }, env as any);
+		await executeEffect({ type: 'EDIT_TELEGRAM_MESSAGE', payload: { chatId: 1, messageId: 1, text: 't' } }, env as any);
+		await executeEffect({ type: 'PUBLISH_TELEGRAPH', payload: { title: 't', nodes: [] } }, env as any);
 	});
 
 	it('covers catches', async () => {
 		const spy = vi.spyOn(console, 'error').mockImplementation(() => { });
 		(fetch as any).mockImplementation(() => Promise.reject(new Error("Fail")));
 		const { ctx, wait } = createBlockingCtx();
-		try { await resolveLink("http://fail.com", "http://fail.com", env, ctx, 1); } catch { }
+		try { await resolveLink("http://fail.com", "http://fail.com", env as any, ctx, 1); } catch { }
 		await wait();
 		expect(spy).toHaveBeenCalled();
 	});
