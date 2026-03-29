@@ -170,6 +170,7 @@ export function integrateObservation(state: ProcessingState, observation: Observ
                  next.phase = 'ENRICHING';
                  next.healingHints = verdict.criticism || verdict.correction;
                  next.insight = undefined;
+                 next.criticVerdict = undefined; // Clear so next round enters VERIFYING fresh
                  next.metadataAttempted = false;
                  next.deepInsightAttempted = false;
                  next.hash = undefined; // Force re-hash for transformed content if needed

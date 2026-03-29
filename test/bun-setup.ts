@@ -11,7 +11,19 @@ db.run(`
         url TEXT PRIMARY KEY,
         title TEXT,
         iv_link TEXT,
+        insight TEXT,
+        trace_id TEXT,
         last_enriched INTEGER
+    );
+`);
+
+db.run(`
+    CREATE TABLE IF NOT EXISTS events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL,
+        data TEXT,
+        chat_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 `);
 
