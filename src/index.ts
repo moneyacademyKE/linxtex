@@ -5,7 +5,7 @@ import {
 	decideNextEffects, 
 	integrateObservation, 
 	extractUrlsFromEntities,
-    convertToTelegraphNodes,
+    transduceContent,
 	type ProcessingState,
 	EffectSchema 
 } from './domain';
@@ -26,33 +26,41 @@ export interface Env {
 	ENRICHMENT_QUEUE: Queue;
 }
 
+export async function webhookHandler(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    console.log(`[FETCH ROOT] ${request.method} ${request.url}`);
+    const url = new URL(request.url);
+    if (url.pathname === '/webhook' && request.method === 'POST') {
+        try {
+            const update = await request.json();
+            await handleUpdate(update, env, ctx);
+            return new Response('OK');
+        } catch (e) {
+            console.error('Webhook error:', e);
+            return new Response('Error', { status: 500 });
+        }
+    }
+
+    if (url.pathname === '/reprocess' && request.method === 'GET') {
+        try {
+            const result = await handleReprocess(env, ctx);
+            return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
+        } catch (e) {
+            console.error('Reprocess error:', e);
+            return new Response(JSON.stringify({ error: String(e) }), { status: 500 });
+        }
+    }
+
+    if (url.pathname === '/') {
+        return new Response('LinxtexBot is running');
+    }
+
+    return new Response('Not Found', { status: 404 });
+}
+
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		console.log(`[FETCH ROOT] ${request.method} ${request.url}`);
-		const url = new URL(request.url);
-		if (url.pathname === '/webhook' && request.method === 'POST') {
-			try {
-				const update = await request.json();
-				await handleUpdate(update, env, ctx);
-				return new Response('OK');
-			} catch (e) {
-				console.error('Webhook error:', e);
-				return new Response('Error', { status: 500 });
-			}
-		}
-
-		if (url.pathname === '/reprocess' && request.method === 'GET') {
-			try {
-				const result = await handleReprocess(env, ctx);
-				return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
-			} catch (e) {
-				console.error('Reprocess error:', e);
-				return new Response(JSON.stringify({ error: String(e) }), { status: 500 });
-			}
-		}
-
-		return new Response('Not Found', { status: 404 });
-	},
+        return webhookHandler(request, env, ctx);
+    },
 
 	async queue(batch: any, env: Env, ctx: ExecutionContext): Promise<void> {
 		console.log(`[QUEUE] Received batch of ${batch.messages.length} messages`);
@@ -98,14 +106,14 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
 			const verification = await verifyInsight(effect.payload.content, effect.payload.insight, env.GEMINI_API_KEY);
 			return verification ? { type: 'VERDICT_GENERATED', verdict: verification.verdict } : { type: 'ERROR_OCCURRED', message: 'Verification failed' };
 
-		case 'PUBLISH_TELEGRAPH':
-            // Logic moved from domain to execution layer
-            const { nodes } = convertToTelegraphNodes(effect.payload.content, effect.payload.baseUrl);
+		case 'PUBLISH_TELEGRAPH': {
+            const nodes = transduceContent(effect.payload.content, '', 'default', effect.payload.baseUrl);
             if (!nodes || nodes.length === 0) return { type: 'ERROR_OCCURRED', message: 'No content to publish' };
 			const ivLink = await makeTelegraphPage(effect.payload.title, nodes, env.TELEGRAPH_TOKEN || '');
 			return ivLink ? { type: 'IV_LINK_GENERATED', ivLink } : { type: 'ERROR_OCCURRED', message: 'Publishing failed' };
+        }
 
-		case 'RECORD_INSIGHT':
+		case 'RECORD_INSIGHT': {
 			const { url, title, ivLink: link, insight, hash, metadata } = effect.payload;
 			// D1 Persistence
 			await env.DB.prepare("INSERT OR REPLACE INTO urls (url, title, iv_link, last_enriched) VALUES (?, ?, ?, ?)")
@@ -121,6 +129,7 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
 			// KV Persistence
 			await env.FACTS.put(`insight:${url}`, JSON.stringify({ title, ivLink: link, insight, hash }), { expirationTtl: 86400 * 2 });
 			return { type: 'PERSISTENCE_COMPLETE' };
+        }
 
 		case 'SEND_TELEGRAM':
 			await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -129,6 +138,11 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
 				body: JSON.stringify(effect.payload)
 			});
 			return null;
+		
+		case 'CALCULATE_HASH': {
+			const hash = await calculateHash(effect.payload.content);
+			return { type: 'HASH_CALCULATED', hash };
+        }
 
 		default:
 			return null;
@@ -154,15 +168,13 @@ export async function resolveLink(
 		const effects = decideNextEffects(state);
 		if (effects.length === 0) break;
 
-		for (const effect of effects) {
-			console.log(`[RESOLVE_LINK] Effect: ${effect.type} (trace: ${traceId})`);
-			const result = await executor(effect, env);
-			console.log(`[RESOLVE_LINK] Result: ${result?.type || 'null'} (trace: ${traceId})`);
-			if (result) {
-				state = integrateObservation(state, result);
-				if (result.type === 'INSIGHTS_GENERATED') {
-					state.hash = await calculateHash(state.textContent || state.content || '');
-				}
+		console.log(`[RESOLVE_LINK] Tick: ${effects.length} effects (trace: ${traceId})`);
+		
+		const observations = await Promise.all(effects.map(effect => executor(effect, env)));
+		
+		for (const observation of observations) {
+			if (observation) {
+				state = integrateObservation(state, observation);
 			}
 		}
 	}
@@ -227,7 +239,7 @@ export async function handleReprocess(env: Env, ctx: ExecutionContext) {
 	};
 }
 
-async function handleUpdate(update: any, env: Env, ctx: ExecutionContext) {
+export async function handleUpdate(update: any, env: Env, ctx: ExecutionContext) {
 	console.log('--- HANDLE UPDATE START ---');
 	const message = update.message || update.channel_post || update.edited_message || update.edited_channel_post;
 	if (!message || !message.text) return;

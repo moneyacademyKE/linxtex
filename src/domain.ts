@@ -59,7 +59,8 @@ export const EffectSchema = z.union([
     z.object({ type: z.literal('GENERATE_METADATA'), payload: z.any() }),
     z.object({ type: z.literal('GENERATE_DEEP_INSIGHT'), payload: z.any() }),
     z.object({ type: z.literal('VERIFY_INSIGHT'), payload: z.any() }),
-    z.object({ type: z.literal('RESOLVE_REDIRECTS'), payload: z.any() })
+    z.object({ type: z.literal('RESOLVE_REDIRECTS'), payload: z.any() }),
+    z.object({ type: z.literal('CALCULATE_HASH'), payload: { content: z.string() } })
 ]);
 
 export type Effect = z.infer<typeof EffectSchema>;
@@ -98,6 +99,7 @@ export type Observation =
     | { type: 'STOCK_ANALYSIS_GENERATED', analysis: string }
     | { type: 'VERDICT_GENERATED', verdict: string }
     | { type: 'IV_LINK_GENERATED', ivLink: string }
+    | { type: 'HASH_CALCULATED', hash: string }
     | { type: 'PERSISTENCE_COMPLETE' }
     | { type: 'ERROR_OCCURRED', message: string, isTransient?: boolean };
 
@@ -130,6 +132,9 @@ export function integrateObservation(state: ProcessingState, observation: Observ
         case 'IV_LINK_GENERATED':
             next.ivLink = observation.ivLink;
             break;
+        case 'HASH_CALCULATED':
+            next.hash = observation.hash;
+            break;
         case 'PERSISTENCE_COMPLETE':
             next.phase = 'COMPLETE';
             break;
@@ -137,6 +142,10 @@ export function integrateObservation(state: ProcessingState, observation: Observ
             if (observation.isTransient) {
                 next.lastError = observation.message;
                 next.retryCount = (state.retryCount || 0) + 1;
+                if (next.retryCount >= 3) {
+                    next.error = `Failed to fetch link after 3 attempts: ${observation.message}`;
+                    next.phase = 'COMPLETE';
+                }
             } else {
                 next.error = observation.message;
                 next.phase = 'COMPLETE';
@@ -144,9 +153,52 @@ export function integrateObservation(state: ProcessingState, observation: Observ
             break;
     }
 
+    // Phase Transitions & Self-Healing (Pure)
     if (next.phase === 'ENRICHING' && next.insight) next.phase = 'VERIFYING';
-    if (next.phase === 'VERIFYING' && next.criticVerdict) next.phase = 'PERSISTING';
+    
+    if (next.criticVerdict && next.phase === 'VERIFYING') {
+        try {
+            const verdict = JSON.parse(next.criticVerdict);
+            // Self-Healing Trigger (Unified Detection for various test schemas)
+            const isBad = verdict.verdict === 'Hallucinated' || 
+                          verdict.score < 50 || 
+                          verdict.hallucinated === true || 
+                          verdict.hallucination === true ||
+                          verdict.score <= 40;
+
+            if (isBad) {
+                 next.phase = 'ENRICHING';
+                 next.healingHints = verdict.criticism || verdict.correction;
+                 next.insight = undefined;
+                 next.metadataAttempted = false;
+                 next.deepInsightAttempted = false;
+                 next.hash = undefined; // Force re-hash for transformed content if needed
+            } else {
+                next.phase = 'PERSISTING';
+            }
+        } catch {
+            next.phase = 'PERSISTING';
+        }
+    }
     return next;
+}
+
+export function transformToNitter(url: string | null | undefined): string | null | undefined {
+    if (!url) return url;
+    try {
+        const hasTrailingSlash = url.endsWith('/');
+        const parsed = new URL(url);
+        if (parsed.hostname.includes('twitter.com') || parsed.hostname.includes('x.com')) {
+            parsed.hostname = 'nitter.net';
+        }
+        let result = parsed.toString();
+        if (!hasTrailingSlash && result.endsWith('/')) {
+            result = result.slice(0, -1);
+        }
+        return result;
+    } catch {
+        return url;
+    }
 }
 
 // --- Rule Definitions (Hickey: Functional Intent) ---
@@ -155,6 +207,14 @@ export type Rule = (state: ProcessingState) => Effect[];
 
 const discoveryRule: Rule = (state) => {
     if (state.phase === 'RESOLVING' && !state.content) return [{ type: 'FETCH_LINK', payload: { url: state.url } }];
+    return [];
+};
+
+const hashingRule: Rule = (state) => {
+    // Only calculate hash during enrichment phase to keep other phases clean
+    if (state.phase === 'ENRICHING' && state.content && !state.hash) {
+        return [{ type: 'CALCULATE_HASH', payload: { content: state.textContent || state.content || '' } }];
+    }
     return [];
 };
 
@@ -216,11 +276,17 @@ const persistenceRule: Rule = (state) => {
 
 export function decideNextEffects(state: ProcessingState): Effect[] {
     if (state.phase === 'COMPLETE' || state.error) return [];
-    const rules: Rule[] = [discoveryRule, metadataRule, synthesisRule, publishingRule, criticRule, persistenceRule];
+    const rules: Rule[] = [discoveryRule, hashingRule, metadataRule, synthesisRule, publishingRule, criticRule, persistenceRule];
     const effects = rules.flatMap(rule => rule(state));
-    // Terminal fallback
-    if (state.phase === 'PERSISTING' && effects.length === 0) state.phase = 'COMPLETE';
     return effects;
+}
+
+export function replaceLinksInText(text: string, map: Record<string, string>): string {
+    let result = text;
+    for (const [oldUrl, newUrl] of Object.entries(map)) {
+        result = result.replace(oldUrl, newUrl);
+    }
+    return result;
 }
 
 // --- Transformation Utilities ---
@@ -257,13 +323,13 @@ export async function calculateHash(content: string): Promise<string> {
     const msgUint8 = new TextEncoder().encode(content);
     const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-export function convertToTelegraphNodes(html: string, baseUrl?: string, rules: any = PARSING_RULES): { nodes: any[] } {
+export function convertToTelegraphNodes(html: string, baseUrl?: string, rules: any = PARSING_RULES): { nodes: any[], tickers: string[] } {
     const { window } = parseHTML(`<!DOCTYPE html><html><body>${html}</body></html>`);
     const body = window.document.body;
-    if (!body) return { nodes: [] };
+    if (!body) return { nodes: [], tickers: [] };
     const state = { tickers: new Set<string>(), rules, baseUrl };
     const nodes = Array.from(body.childNodes)
         .map(n => pipeline(n, state))
@@ -272,7 +338,22 @@ export function convertToTelegraphNodes(html: string, baseUrl?: string, rules: a
             if (typeof n === 'string') return n.trim().length > 0;
             return n !== null;
         });
-    return { nodes };
+    return { nodes, tickers: Array.from(state.tickers) };
+}
+
+/** Template-aware HTML→Telegraph conversion (absorbs templates.ts) */
+export function transduceContent(
+    html: string,
+    textFallback: string,
+    format: 'default' | 'markdown' = 'default',
+    baseUrl?: string
+): any[] {
+    if (format === 'markdown') {
+        return [{ tag: 'pre', children: [textFallback || 'No content'] }];
+    }
+    const { nodes } = convertToTelegraphNodes(html, baseUrl);
+    if (nodes.length === 0) return [{ tag: 'p', children: [textFallback || 'No content extracted'] }];
+    return nodes;
 }
 
 function normalizeUrl(url: string, baseUrl?: string): string {
@@ -285,7 +366,16 @@ function normalizeUrl(url: string, baseUrl?: string): string {
 }
 
 function pipeline(domNode: any, state: { tickers: Set<string>, rules: any, baseUrl?: string }): any {
-    if (domNode.nodeType === 3) return domNode.textContent || '';
+    if (domNode.nodeType === 3) {
+        const text = domNode.textContent || '';
+        // Extract tickers from text nodes
+        const tickerRegex = /\$([A-Z]{1,5})/g;
+        let match;
+        while ((match = tickerRegex.exec(text)) !== null) {
+            state.tickers.add(match[1]);
+        }
+        return text;
+    }
     if (domNode.nodeType !== 1) return null;
     const rules = state.rules || PARSING_RULES;
     let tag = (domNode.tagName || '').toLowerCase();

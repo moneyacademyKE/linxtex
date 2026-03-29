@@ -1,32 +1,6 @@
-export async function getTweetContent(tweetId: string, bearerToken: string): Promise<{ text: string, author: string } | null> {
-    const url = `https://api.twitter.com/2/tweets/${tweetId}?expansions=author_id&user.fields=username,name`;
+// --- Pure URL Utilities ---
 
-    try {
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${bearerToken}`
-            }
-        });
-
-        if (!response.ok) {
-            console.error(`Twitter API error: ${response.status} ${await response.text()}`);
-            return null;
-        }
-
-        const data: any = await response.json();
-        if (!data.data) return null;
-
-        const author = data.includes?.users?.[0]?.name || data.includes?.users?.[0]?.username || 'Twitter User';
-        return {
-            text: data.data.text,
-            author: author
-        };
-    } catch (err) {
-        console.error('Twitter fetch error:', err);
-        return null;
-    }
-}
-
+/** Extracts a tweet ID from a twitter.com or x.com URL. Pure, no I/O. */
 export function extractTweetId(url: string): string | null {
     try {
         const parsed = new URL(url);
@@ -43,6 +17,33 @@ export function extractTweetId(url: string): string | null {
     }
 }
 
+// --- Side-Effecting Network Fetchers ---
+
+/** Fetches tweet text and author name from the Twitter v2 API. */
+export async function getTweetContent(tweetId: string, bearerToken: string): Promise<{ text: string, author: string } | null> {
+    const url = `https://api.twitter.com/2/tweets/${tweetId}?expansions=author_id&user.fields=username,name`;
+    try {
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${bearerToken}` }
+        });
+
+        if (!response.ok) {
+            console.error(`Twitter API error: ${response.status} ${await response.text()}`);
+            return null;
+        }
+
+        const data: any = await response.json();
+        if (!data.data) return null;
+
+        const author = data.includes?.users?.[0]?.name || data.includes?.users?.[0]?.username || 'Twitter User';
+        return { text: data.data.text, author };
+    } catch (err) {
+        console.error('Twitter fetch error:', err);
+        return null;
+    }
+}
+
+/** Follows HTTP redirects and returns the final resolved URL. */
 export async function resolveRedirects(url: string): Promise<string> {
     try {
         const response = await fetch(url, {

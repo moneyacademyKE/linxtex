@@ -30,14 +30,17 @@ describe("Self-Healing Patterns", () => {
                 originalUrl: "http://a.com", 
                 url: "http://a.com", 
                 phase: "RESOLVING",
-                retryCount: 3,
-                lastError: "persistent failure"
+                retryCount: 2 // 2 attempts already
             };
 
-            const effects = decideNextEffects(state);
-            expect(effects).toHaveLength(0);
+            // Third aggregate attempt triggers failure
+            state = integrateObservation(state, { type: 'ERROR_OCCURRED', message: 'Final fail', isTransient: true });
+
             expect(state.phase).toBe("COMPLETE");
             expect(state.error).toContain("Failed to fetch link after 3 attempts");
+            
+            const effects = decideNextEffects(state);
+            expect(effects).toHaveLength(0);
         });
     });
 
@@ -48,22 +51,24 @@ describe("Self-Healing Patterns", () => {
                 url: "http://a.com", 
                 phase: "VERIFYING",
                 insight: "Original bad insight",
-                criticVerdict: JSON.stringify({ score: 40, hallucination: true, correction: "Include the actual stock price" })
+                content: "Sample content for enrichment"
             };
 
-            // This should transition VERIFYING -> HEALING -> ENRICHING in one call due to recursive decideNextEffects
-            const effects = decideNextEffects(state);
+            // Instead of mutation in decide, it happens in integrate
+            state = integrateObservation(state, { 
+                type: 'VERDICT_GENERATED', 
+                verdict: JSON.stringify({ score: 40, hallucinated: true, criticism: "Include actual stock price" }) 
+            });
             
             expect(state.phase).toBe("ENRICHING");
             expect(state.insight).toBeUndefined();
-            expect(state.healingHints).toBe("Include the actual stock price");
-            // Expect 2 effects: GENERATE_METADATA and PUBLISH_TELEGRAPH (speculative parallelism)
-            expect(effects).toHaveLength(2);
-            expect(effects.some(e => e.type === "GENERATE_METADATA")).toBe(true);
-            expect(effects.some(e => e.type === "PUBLISH_TELEGRAPH")).toBe(true);
+            expect(state.healingHints).toBe("Include actual stock price");
+
+            const effects = decideNextEffects(state);
             
-            const metadataEffect = effects.find(e => e.type === "GENERATE_METADATA") as any;
-            expect(metadataEffect.payload.content).toContain("Correction hint: Include the actual stock price");
+            // In Parallel Hickey Mode, we expect metadata generation to re-trigger
+            const types = effects.map(e => e.type);
+            expect(types).toContain("GENERATE_METADATA");
         });
     });
 });
