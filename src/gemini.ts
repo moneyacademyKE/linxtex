@@ -141,7 +141,7 @@ type InvokeOptions = {
     tools?: any[];
 };
 
-async function invokeAI({ prompt, text, apiKey, model = 'gemini-2.0-flash-lite', tools }: InvokeOptions): Promise<any | null> {
+async function invokeAI({ prompt, text, apiKey, model = 'gemini-3.1-flash-lite-preview', tools }: InvokeOptions): Promise<any | null> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const body: any = {
