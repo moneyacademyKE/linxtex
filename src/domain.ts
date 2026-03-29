@@ -60,7 +60,7 @@ export const EffectSchema = z.union([
     z.object({ type: z.literal('GENERATE_DEEP_INSIGHT'), payload: z.any() }),
     z.object({ type: z.literal('VERIFY_INSIGHT'), payload: z.any() }),
     z.object({ type: z.literal('RESOLVE_REDIRECTS'), payload: z.any() }),
-    z.object({ type: z.literal('CALCULATE_HASH'), payload: { content: z.string() } })
+    z.object({ type: z.literal('CALCULATE_HASH'), payload: z.object({ content: z.string() }) })
 ]);
 
 export type Effect = z.infer<typeof EffectSchema>;
