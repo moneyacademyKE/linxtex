@@ -7,6 +7,7 @@ import {
 	extractUrlsFromEntities,
     transduceContent,
 	filterBlogpostLinks,
+	transformToNitter,
 	type ProcessingState,
 	EffectSchema 
 } from './domain';
@@ -25,6 +26,7 @@ export interface Env {
 	DB: D1Database;
 	FACTS: KVNamespace;
 	ENRICHMENT_QUEUE: Queue;
+	BROWSER: any;
 }
 
 export async function webhookHandler(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -119,9 +121,11 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
     }
 
 	switch (effect.type) {
-		case 'FETCH_LINK':
-			const article = await extractContent(effect.payload.url);
+		case 'FETCH_LINK': {
+			const targetUrl = transformToNitter(effect.payload.url) || effect.payload.url;
+			const article = await extractContent(targetUrl, env.BROWSER);
 			return article ? { type: 'CONTENT_FETCHED', ...article } : { type: 'ERROR_OCCURRED', message: 'Fetch failed' };
+        }
 
 		case 'GENERATE_METADATA':
 			const insights = await generateFinancialInsight(effect.payload.content, env.GEMINI_API_KEY, effect.payload.hints);

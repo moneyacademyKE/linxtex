@@ -27,4 +27,7 @@
 - **Adaptive Projection Philosophy**: Frictionless delivery is paramount. Small content (< 4000 chars) is better served as direct text (Insight + Article) than as a required click to an external mirror.
 - **Automated Data Hygiene (Janitor Pattern)**: In high-velocity signal processing, facts older than 24 hours provide diminishing returns. Using a Cron-driven janitor keeps the database lean and focus "Urgent".
 - **Zero-Signal Suppression**: Distinguishing between "Brief Content" and "Zero Content" (< 100 chars) prevents the bot from broadcasting failed extractions or landing/blocked pages.
+- **Nitter Redirection Strategy**: Pivoting internally to Nitter instances bypasses X.com's aggressive anti-scraping more reliably than direct browser rendering, providing clean, scrape-ready HTML.
+- **Thread Unrolling for Contextual Synthesis**: For high-conviction signals from X.com, capturing the entire thread is non-negotiable. Fragments lead to hallucinations or incomplete insights; deep thread capture provides the AI with the full discussion context.
+- **Specialization within Universality**: While the orchestrator remains universal, specialized parsing branches for high-velocity domains (like Nitter) preserve the "High-Conviction" requirement.
 

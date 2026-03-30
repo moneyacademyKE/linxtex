@@ -41,6 +41,24 @@ export async function extractContent(url: string, browserBinding?: any): Promise
     }
 
     const { window } = parseHTML(html);
+
+    // Specialized Logic: Nitter Thread Unrolling
+    if (url.includes('nitter')) {
+        const tweets = Array.from(window.document.querySelectorAll('.tweet-content, .main-tweet .tweet-content'));
+        const author = window.document.querySelector('.main-tweet .fullname')?.textContent?.trim() || 'Twitter User';
+        const title = `Twitter Thread by ${author}`;
+        
+        const threadContent = (tweets as any[]).map(t => t.innerHTML).join('<br><br>---<br><br>');
+        const threadText = (tweets as any[]).map(t => t.textContent).join('\n\n---\n\n');
+
+        return ArticleSchema.parse({
+            title,
+            content: threadContent,
+            textContent: threadText,
+            url: finalUrl
+        });
+    }
+
     const reader = new Readability(window.document as any);
     let articleData = reader.parse();
 

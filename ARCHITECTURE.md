@@ -58,6 +58,7 @@ The shell (`resolveLink`) dynamically chooses the most frictionless delivery for
 
 -   **Universal Blogpost Filter**: Heuristically prioritizes research papers and deep-dive blogs over social homepages and referral noise.
 -   **Low-Content Suppression**: Automatically discards signals with $< 100$ characters of meaningful content to protect the feed from junk/blockers.
+-   **Specialized Thread Unrolling (Nitter Pattern)**: For X.com links, the bot pivots internally to Nitter and uses custom CSS selectors to rebuild long-form conversation context from fragmented tweets.
 
 ## 5. Epistemic Integrity
 
@@ -65,4 +66,11 @@ The `Critic` tier ensures that every insight published to the "View Layer" is gr
 
 ## 6. Testability
 
-By decoupling the `Executor` from the `Orchestrator`, we achieve 100% test coverage using an in-memory "Digital Twin" of the infrastructure.
+## 7. Technical Debt & Orphaned Components
+
+The following components are currently not integrated into the universal orchestration engine and represent refactor targets for the next architectural cycle:
+
+- **[projections.ts](file:///Users/moe/Documents/linxtex/src/projections.ts)**: Contains rich formatting logic for insights and user stats. Currently bypassed by ad-hoc templates in `index.ts`.
+- **[twitter.ts](file:///Users/moe/Documents/linxtex/src/twitter.ts)**: Specialized scraping logic for X.com; now handled by universal extractors and Nitter redirection.
+- **[middleware.ts](file:///Users/moe/Documents/linxtex/src/middleware.ts)**: Deprecated request pipeline logic from previous framework iterations.
+- **[logger.ts](file:///Users/moe/Documents/linxtex/src/logger.ts)**: Redundant logging abstraction; replaced by direct D1 telemetry.
