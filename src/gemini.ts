@@ -189,15 +189,20 @@ async function invokeAI({ prompt, text, apiKey, model = 'gemini-3.1-flash-lite-p
 export async function generateFinancialInsight(
     text: string,
     apiKey: string,
+    hints?: string,
     model?: string,
     perspective: string = 'default'
 ): Promise<Insight | null> {
     const perspectiveOverride = perspective !== 'default'
         ? `\n\nPERSPECTIVE OVERRIDE: Focus your synthesis through the lens of: ${perspective}.`
         : '';
+    
+    const healingOverride = hints 
+        ? `\n\nHEALING HINTS (CRITICAL): The previous generation was flagged for errors. Please correct based on this feedback:\n${hints}`
+        : '';
 
     const data = await invokeAI({
-        prompt: PROMPTS.financial + perspectiveOverride,
+        prompt: PROMPTS.financial + perspectiveOverride + healingOverride,
         text,
         apiKey,
         model

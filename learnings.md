@@ -5,6 +5,10 @@
 *   **State as a Value over Time**: Treating the processing state as a series of immutable values transformed by `integrateObservation` and `decideNextEffects` makes the system predictable.
 *   **Parallelism via Data, not Mutexes**: By returning multiple effects from the pure core, the imperative shell can execute them in parallel (using `Promise.all`) without any risk of race conditions, as the core itself is stateless.
 *   **Managed Hashing**: Elevating hashing to a first-class effect (`CALCULATE_HASH`) ensures that even expensive synchronous operations are orchestrated within the managed lifecycle rather than hidden inside pure functions.
+*   **De-complecting Config from State**: Removing static data (like `parsingRules`) from the `ProcessingState` ensures the state only represents the evolving "Value" of the link enrichment process. Config is passed as a dependency or parameter instead.
+*   **Explicit Healing States**: Moving "Self-Correction" into a first-class `HEALING` phase makes the AI's internal feedback loop observable and prevents it from being a "hidden" side-effect of the enrichment logic.
+*   **Granular Persistence Effects**: Splitting coarse effects (like `RECORD_INSIGHT`) into granular ones (`PERSIST_RELATIONAL`, `LOG_TRACE`, `CACHE_VIEW`) allows the core to orchestrate data across different durability layers independently.
+*   **Fact Collection Pattern**: Accumulating structured data points (Observations) throughout the lifecycle, rather than just updating a single "Insight" string, provides better traceability.
 
 ## Architectural Learnings
 - **De-complecting Orchestration**: In a Cloudflare Worker, keeping the "Imperative Shell" thin is crucial. By moving deciding "what to do" into a pure transducer-driven state machine in `domain.ts`, we made the logic testable and easier to reason about.
@@ -17,3 +21,10 @@
 - **Autonomic Self-Healing**: De-complecting error recovery from terminal failure by treating "Retries" and "Healing" as valid state transitions.
 - **Observation-Driven Transitions**: Moving phase transitions into the `integrateObservation` function ensures that every "Fact" integrated into the system evolves the phase correctly.
 - **Zero-Mutation Enforcement**: Absolute purity in the core is required for the Digital Twin testing model to remain high-fidelity.
+- **Heuristic Link Selection**: In multi-link messages, using a "path-depth + domain-penalty" scoring system correctly identifies primary content (blogposts) vs. metadata (parent links).
+- **In-place Reflection**: For high-trust channels, editing the source message to reflect the IV link reduces friction (No "double post").
+- **Universalizing Premium Logic**: Removing channel-specific hardcoding simplifies the substrate. Premium, high-conviction processing should be the default for 100% of signals.
+- **Adaptive Projection Philosophy**: Frictionless delivery is paramount. Small content (< 4000 chars) is better served as direct text (Insight + Article) than as a required click to an external mirror.
+- **Automated Data Hygiene (Janitor Pattern)**: In high-velocity signal processing, facts older than 24 hours provide diminishing returns. Using a Cron-driven janitor keeps the database lean and focus "Urgent".
+- **Zero-Signal Suppression**: Distinguishing between "Brief Content" and "Zero Content" (< 100 chars) prevents the bot from broadcasting failed extractions or landing/blocked pages.
+

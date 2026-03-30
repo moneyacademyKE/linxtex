@@ -34,3 +34,25 @@ AI results (insights) may be hallucinated or low quality, but the system must ma
 
 ### Solution
 Introduce a verification phase where a "Critic" model reviews the generated insight. If the verdict is negative, the core transition back to the `ENRICHING` phase, clears the bad data, and provides `healingHints` for the next generation pass.
+
+## Explicit HEALING Phase
+### Problem
+When the Critic triggers a retry, transitioning directly back to `ENRICHING` makes it difficult to distinguish between the initial enrichment and a "Healing" attempt in logs and metrics.
+
+### Solution
+Introduce an explicit `HEALING` phase in the state machine. Transitions move from `VERIFYING` -> `HEALING` if a hallucination is detected. The `HEALING` phase then prepares the state (clears old insights, sets hints) and transitions back to `ENRICHING` for the next attempt. This makes the self-correction loop visible and measurable.
+
+## Heuristic Link Selection Pattern
+### Problem
+High-velocity Telegram channels often share "parent" links (referrals, invites, profile homepages) alongside the primary "blogpost" content. Standard URL detection enqueues all links, leading to redundant or low-value processing.
+
+### Solution
+Implement a **Scoring Heuristic** that distinguishes content from metadata.
+- **Positive Weights**: Path depth (`+10` per segment), Known platforms (`+50`).
+- **Negative Weights**: Root domains (`-50`), Parent/Social domains (`-100`).
+This ensures the system only processes the "Highest Conviction" link when multiple are present.
+
+- **In-place Reflection Pattern (Message Editing)**: For high-trust channels, the bot modifies the *original* message using the Telegram `editMessageText` API. By replacing the source URL with the generated Instant View (`telegra.ph`) link, the enrichment becomes an integral part of the source post rather than an external commentary.
+- **Adaptive Delivery Pattern**: To minimize read-friction, short-form content (< 4000 chars) is delivered **directly** to Telegram as a text block (Headline + Insight + Full Text). Long-form content automatically falls back to a mirrored Telegra.ph Instant View page.
+- **Noise Reduction Gate Pattern**: To protect the feed from junk, a final quality gate suppresses any signal where the extracted article content is $< 100$ characters. These events are logged as `SIGNAL_SUPPRESSED`.
+- **Scheduled Janitor Pattern**: In high-velocity data environments, stale facts are purged using a **Cron-driven Scheduled Worker**. A daily janitor deletes records older than 24 hours from SQL and expires them from the KV edge cache via `expirationTtl`.

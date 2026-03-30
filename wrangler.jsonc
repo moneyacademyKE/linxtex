@@ -51,5 +51,8 @@
 		"consumers": [
 			{ "queue": "linxtex-enrichment", "max_batch_size": 1 }
 		]
+	},
+	"triggers": {
+		"crons": [ "0 0 * * *" ]
 	}
 }

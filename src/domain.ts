@@ -50,9 +50,11 @@ export const TelegraphNodeSchema: z.ZodType<any> = z.lazy(() =>
 export const EffectSchema = z.union([
     z.object({ type: z.literal('SEND_TELEGRAM'), payload: z.any() }),
     z.object({ type: z.literal('PUBLISH_TELEGRAPH'), payload: z.any() }),
-    z.object({ type: z.literal('RECORD_INSIGHT'), payload: LinkInsightSchema }),
-    z.object({ type: z.literal('EDIT_TELEGRAM_MESSAGE'), payload: z.any() }),
-    z.object({ type: z.literal('EDIT_TELEGRAM_CAPTION'), payload: z.any() }),
+    z.object({ type: z.literal('PERSIST_RELATIONAL'), payload: z.object({ url: z.string(), title: z.string(), ivLink: z.string().optional() }) }),
+    z.object({ type: z.literal('LOG_TRACE'), payload: z.object({ traceId: z.string(), url: z.string(), hash: z.string().optional(), insight: z.string(), metadata: z.any() }) }),
+    z.object({ type: z.literal('CACHE_VIEW'), payload: z.object({ url: z.string(), payload: z.any() }) }),
+    z.object({ type: z.literal('EDIT_TELEGRAM_MESSAGE'), payload: z.object({ chatId: z.number(), messageId: z.number(), text: z.string(), entities: z.any().optional() }) }),
+    z.object({ type: z.literal('EDIT_TELEGRAM_CAPTION'), payload: z.object({ chatId: z.number(), messageId: z.number(), caption: z.string(), entities: z.any().optional() }) }),
     z.object({ type: z.literal('LOG_EVENT'), payload: z.any() }),
     z.object({ type: z.literal('LOG_INSIGHT'), payload: z.any() }),
     z.object({ type: z.literal('FETCH_LINK'), payload: z.any() }),
@@ -65,15 +67,17 @@ export const EffectSchema = z.union([
 
 export type Effect = z.infer<typeof EffectSchema>;
 
-export type MachinePhase = 'RESOLVING' | 'ENRICHING' | 'VERIFYING' | 'PERSISTING' | 'COMPLETE';
+export type MachinePhase = 'RESOLVING' | 'ENRICHING' | 'VERIFYING' | 'HEALING' | 'PERSISTING' | 'COMPLETE';
 
 export type ProcessingState = {
     originalUrl: string;
     url: string;
     phase: MachinePhase;
     traceId?: string;
+    chatId?: number;
+    messageId?: number;
+    isMultiPost?: boolean;
     perspective?: string;
-    parsingRules?: any;
     title?: string;
     content?: string;
     textContent?: string;
@@ -90,6 +94,9 @@ export type ProcessingState = {
     healingHints?: string;
     metadataAttempted?: boolean;
     deepInsightAttempted?: boolean;
+    persistedRelational?: boolean;
+    persistedTrace?: boolean;
+    persistedCache?: boolean;
 };
 
 export type Observation = 
@@ -100,7 +107,9 @@ export type Observation =
     | { type: 'VERDICT_GENERATED', verdict: string }
     | { type: 'IV_LINK_GENERATED', ivLink: string }
     | { type: 'HASH_CALCULATED', hash: string }
-    | { type: 'PERSISTENCE_COMPLETE' }
+    | { type: 'RELATIONAL_PERSISTED' }
+    | { type: 'TRACE_PERSISTED' }
+    | { type: 'CACHE_PERSISTED' }
     | { type: 'ERROR_OCCURRED', message: string, isTransient?: boolean };
 
 // --- Pure Orchestration ---
@@ -135,8 +144,14 @@ export function integrateObservation(state: ProcessingState, observation: Observ
         case 'HASH_CALCULATED':
             next.hash = observation.hash;
             break;
-        case 'PERSISTENCE_COMPLETE':
-            next.phase = 'COMPLETE';
+        case 'RELATIONAL_PERSISTED':
+            next.persistedRelational = true;
+            break;
+        case 'TRACE_PERSISTED':
+            next.persistedTrace = true;
+            break;
+        case 'CACHE_PERSISTED':
+            next.persistedCache = true;
             break;
         case 'ERROR_OCCURRED':
             if (observation.isTransient) {
@@ -153,13 +168,26 @@ export function integrateObservation(state: ProcessingState, observation: Observ
             break;
     }
 
+    // Completion Check
+    if (next.phase === 'PERSISTING' && next.persistedRelational && next.persistedTrace && next.persistedCache) {
+        next.phase = 'COMPLETE';
+    }
+
     // Phase Transitions & Self-Healing (Pure)
     if (next.phase === 'ENRICHING' && next.insight) next.phase = 'VERIFYING';
     
+    // Healing Trigger
+    if (next.phase === 'HEALING') {
+        const hasRestarted = !next.insight && !next.criticVerdict && !next.metadataAttempted;
+        if (hasRestarted) {
+            next.phase = 'ENRICHING';
+        }
+    }
+
     if (next.criticVerdict && next.phase === 'VERIFYING') {
         try {
             const verdict = JSON.parse(next.criticVerdict);
-            // Self-Healing Trigger (Unified Detection for various test schemas)
+            // Self-Healing Detection Logic (Data-driven intent)
             const isBad = verdict.verdict === 'Hallucinated' || 
                           verdict.score < 50 || 
                           verdict.hallucinated === true || 
@@ -167,13 +195,13 @@ export function integrateObservation(state: ProcessingState, observation: Observ
                           verdict.score <= 40;
 
             if (isBad) {
-                 next.phase = 'ENRICHING';
+                 next.phase = 'HEALING';
                  next.healingHints = verdict.criticism || verdict.correction;
                  next.insight = undefined;
-                 next.criticVerdict = undefined; // Clear so next round enters VERIFYING fresh
+                 next.criticVerdict = undefined;
                  next.metadataAttempted = false;
                  next.deepInsightAttempted = false;
-                 next.hash = undefined; // Force re-hash for transformed content if needed
+                 next.hash = undefined;
             } else {
                 next.phase = 'PERSISTING';
             }
@@ -220,9 +248,10 @@ const hashingRule: Rule = (state) => {
 };
 
 const metadataRule: Rule = (state) => {
-    if (state.phase === 'ENRICHING' && !state.insight && !state.metadataAttempted) {
+    if ((state.phase === 'ENRICHING' || state.phase === 'HEALING') && !state.insight && !state.metadataAttempted) {
         const content = state.textContent || state.content || '';
-        if (content) return [{ type: 'GENERATE_METADATA', payload: { content } }];
+        const hints = state.healingHints;
+        if (content) return [{ type: 'GENERATE_METADATA', payload: { content, hints } }];
     }
     return [];
 };
@@ -238,9 +267,11 @@ const synthesisRule: Rule = (state) => {
 };
 
 const publishingRule: Rule = (state) => {
-    // Intent: We want an Instant View page if we have content and insight
+    // Intent: We want an Instant View page if we have content and insight, AND content is long enough
     if (state.content && state.insight && !state.ivLink) {
-        return [{ type: 'PUBLISH_TELEGRAPH', payload: { title: state.title || 'Untitled', content: state.content, baseUrl: state.url } }];
+        if (state.content.length >= 4000) {
+            return [{ type: 'PUBLISH_TELEGRAPH', payload: { title: state.title || 'Untitled', content: state.content, baseUrl: state.url } }];
+        }
     }
     return [];
 };
@@ -253,24 +284,52 @@ const criticRule: Rule = (state) => {
 };
 
 const persistenceRule: Rule = (state) => {
-    if (state.phase === 'PERSISTING' && state.title && state.ivLink && state.insight) {
-        return [{ 
-            type: 'RECORD_INSIGHT', 
-            payload: {
-                url: state.url,
-                title: state.title,
-                ivLink: state.ivLink,
-                insight: state.stockAnalysis || state.insight,
-                hash: state.hash,
-                metadata: {
-                    model: 'gemini-3.1-flash-lite-preview',
-                    timestamp: Date.now(),
-                    traceId: state.traceId,
-                    perspective: state.perspective,
-                    retryCount: state.retryCount || 0
+    const skipIV = state.content && state.content.length < 4000;
+    if (state.phase === 'PERSISTING' && state.title && state.insight && (state.ivLink || skipIV)) {
+        const effects: Effect[] = [];
+        
+        if (!state.persistedRelational) {
+            effects.push({ 
+                type: 'PERSIST_RELATIONAL', 
+                payload: { url: state.url, title: state.title, ivLink: state.ivLink || '' } 
+            });
+        }
+        
+        if (!state.persistedTrace) {
+            effects.push({ 
+                type: 'LOG_TRACE', 
+                payload: {
+                    traceId: state.traceId || 'unknown',
+                    url: state.url,
+                    hash: state.hash || '',
+                    insight: state.stockAnalysis || state.insight,
+                    metadata: {
+                        model: 'gemini-3.1-flash-lite-preview',
+                        timestamp: Date.now(),
+                        perspective: state.perspective,
+                        retryCount: state.retryCount || 0,
+                        healingHints: state.healingHints
+                    }
                 }
-            }
-        }];
+            });
+        }
+        
+        if (!state.persistedCache) {
+            effects.push({ 
+                type: 'CACHE_VIEW', 
+                payload: {
+                    url: state.url,
+                    payload: { 
+                        title: state.title, 
+                        ivLink: state.ivLink, 
+                        insight: state.stockAnalysis || state.insight, 
+                        hash: state.hash 
+                    }
+                }
+            });
+        }
+        
+        return effects;
     }
     return [];
 };
@@ -314,10 +373,64 @@ export function extractUrlsFromEntities(text: string, entities?: any[]): string[
 export function isHomepage(url: string): boolean {
     try {
         const parsed = new URL(url);
-        return parsed.pathname === '/' || parsed.pathname === '';
-    } catch {
+        // Reject root pages
+        if (parsed.pathname === '/' || parsed.pathname === '') return true;
+        // Reject CDN image/media URLs
+        const isImagePath = /\.(png|jpg|jpeg|gif|webp|svg|mp4|pdf|mp3|wav)(\?|$)/i.test(parsed.pathname);
+        if (isImagePath) return true;
+        // Reject known CDN/media-only hostnames
+        const ignoredHosts = ['cdn-cgi', 'media.beehiiv.com', 'substackcdn.com', 'pbs.twimg.com'];
+        if (ignoredHosts.some(h => parsed.hostname.includes(h))) return true;
         return false;
+    } catch {
+        return true; // Malformed URL → ignore
     }
+}
+
+/** 
+ * Heuristic to distinguish "Blogpost" links from "Parent" links.
+ * Prefers links with deeper paths and avoids root domains or social profiles if a subpage exists.
+ * Returns all URLs sorted by their heuristic quality score.
+ */
+export function filterBlogpostLinks(urls: string[]): { url: string, score: number }[] {
+    const scores = urls.map(url => {
+        try {
+            const parsed = new URL(url);
+            let score = 0;
+            
+            // Prefer deeper paths (indicates article vs homepage)
+            const pathParts = parsed.pathname.split('/').filter(Boolean);
+            score += pathParts.length * 10;
+            
+            // Penalize root domains
+            if (pathParts.length === 0) score -= 50;
+            
+            // Specialized Social Profile detection (e.g. x.com/user vs x.com/user/status/123)
+            const socialDomains = ['twitter.com', 'x.com', 'farcaster.xyz', 'instagram.com', 'facebook.com', 'linkedin.com', 'binance.com', 'coinmarketcap.com'];
+            if (socialDomains.some(d => parsed.hostname.includes(d))) {
+                // If it's just a profile (path length <= 1 for X/Twitter/Farcaster)
+                if (pathParts.length <= 1) {
+                    score -= 150; // Heavily penalize social profiles
+                } else {
+                    score -= 50; // Still penalize social content relative to blogs
+                }
+            }
+
+            // Prefer known blog/research platforms
+            const blogPlatforms = ['substack.com', 'medium.com', 'ghost.io', 'wordpress.com', 'mirror.xyz', 'paragraph.xyz', 'youtube.com', 'github.com'];
+            if (blogPlatforms.some(d => parsed.hostname.includes(d))) {
+                score += 50;
+            }
+
+            return { url, score };
+        } catch {
+            return { url, score: -1000 };
+        }
+    });
+
+    // Sort by score descending
+    scores.sort((a, b) => b.score - a.score);
+    return scores;
 }
 
 export async function calculateHash(content: string): Promise<string> {

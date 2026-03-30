@@ -71,14 +71,21 @@ describe("Rich Hickey Audit Verification", () => {
             expect(state.phase).toBe(stateClone.phase);
         });
 
-        it("transitions to COMPLETE via PERSISTENCE_COMPLETE observation", () => {
-            const state: ProcessingState = { 
+        it("transitions to COMPLETE only after all persistence steps complete", () => {
+            let state: ProcessingState = { 
                 originalUrl: 'http://a.com', 
                 url: 'http://a.com', 
                 phase: 'PERSISTING'
             };
-            const next = integrateObservation(state, { type: 'PERSISTENCE_COMPLETE' });
-            expect(next.phase).toBe('COMPLETE');
+            
+            state = integrateObservation(state, { type: 'RELATIONAL_PERSISTED' });
+            expect(state.phase).toBe('PERSISTING');
+            
+            state = integrateObservation(state, { type: 'TRACE_PERSISTED' });
+            expect(state.phase).toBe('PERSISTING');
+            
+            state = integrateObservation(state, { type: 'CACHE_PERSISTED' });
+            expect(state.phase).toBe('COMPLETE');
         });
     });
 });

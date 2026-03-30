@@ -38,5 +38,13 @@ bun test test/e2e-integration.spec.ts
 - **Messaging**: Cloudflare Queues
 - **Publishing**: Telegra.ph (Instant View)
 
+## 📑 Universal High-Conviction Processing
+
+The bot implements a specialized **High-Conviction Logic Path** for 100% of ingested items to ensure a premium, signal-to-noise optimized experience.
+
+- **Low-Content Filter (100 Chars)**: To maintain a high-conviction feed, articles with under 100 characters of meaningful content (junk, blockers, empty pages) are automatically suppressed and not broadcast.
+- **In-line Content Threshold (4000 Chars)**: To minimize friction, short-form content (under 4000 characters) is delivered **directly** to Telegram as a text message including the AI Insight and core content.
+- **Telegra.ph Fallback (>= 4000 Chars)**: Long-form content is automatically mirrored to a Telegra.ph Instant View page, with the original post transformed into a clickable, title-masked hyperlink.
+
 ---
 *Built with Rich Hickey quality principles for simplicity and de-complectation.*

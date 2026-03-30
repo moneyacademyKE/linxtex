@@ -25,17 +25,14 @@ CREATE TABLE IF NOT EXISTS content_hashes (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Structured Insight Logs (Relational)
+-- Structured Insight Logs (Forensic Trace)
 CREATE TABLE IF NOT EXISTS insight_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    content_hash TEXT,
-    raw_insight TEXT,
-    relevance_score INTEGER,
-    trace_id TEXT, -- Added for Phase 5 Idempotency
-    critic_verdict TEXT, -- Added for Phase 6 Epistemic Integrity
-    perspective TEXT DEFAULT 'default', -- Phase 8
-    retry_count INTEGER DEFAULT 0, -- Phase 9
-    healing_hints TEXT, -- Phase 9
+    trace_id TEXT,
+    url TEXT,
+    hash TEXT,
+    insight TEXT,
+    metadata TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
