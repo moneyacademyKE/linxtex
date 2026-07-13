@@ -155,7 +155,19 @@ Scheduled cleanup currently prunes:
 - `insight_logs`
 - `events`
 
-## 7. Module responsibilities
+## 7. Public and operational endpoints
+
+The worker currently exposes these routes in `src/index.ts`:
+
+- `POST /webhook` — Telegram ingress
+- `GET /reprocess` and `GET /api/reprocess` — recover URLs from historical `MESSAGE_RECEIVED` events and re-enqueue them
+- `GET /api/feed` — recent enriched URL records with latest insight join
+- `GET /api/vitals` — lightweight aggregate counts and reported success rate
+- `GET /` — basic status response
+
+Scheduled maintenance runs daily via Wrangler cron `0 0 * * *`.
+
+## 8. Module responsibilities
 
 | Module | Current responsibility |
 |---|---|
@@ -171,7 +183,7 @@ Scheduled cleanup currently prunes:
 | `src/telegram_projection.ts` | Output formatting, suppression, and Telegram delivery selection |
 | `src/perspective.ts` | Chat-to-perspective and tone-template routing |
 
-## 8. Formerly suspicious modules
+## 9. Formerly suspicious modules
 
 These modules are **not orphaned right now**; they still have an active role or test coverage:
 
@@ -182,7 +194,7 @@ These modules are **not orphaned right now**; they still have an active role or 
 
 They may still deserve refactoring or better integration, but calling them dead code would be inaccurate.
 
-## 9. Testability
+## 10. Testability
 
 The architecture is easy to exercise because:
 
