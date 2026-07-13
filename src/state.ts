@@ -12,14 +12,22 @@ export function integrateObservation(state: ProcessingState, observation: Observ
             next.content = observation.content;
             next.textContent = observation.textContent;
             next.publishedTime = observation.publishedTime;
+            next.fidelityRatio = observation.fidelityRatio;
             next.phase = 'ENRICHING';
             break;
         case 'INSIGHTS_GENERATED':
             next.insight = observation.insight;
-            next.financialData = observation.financialData;
             next.metadataAttempted = true;
             next.qualityTier = 'financial';
-            next.relevanceScore = observation.relevanceScore;
+            next.relevanceScore = observation.relevanceScore ?? (observation as any).relevance_score;
+            next.tickers = (observation as any).tickers;
+            next.financialData = {
+                sentiment: (observation as any).sentiment,
+                fact_check: (observation as any).fact_check,
+                analysis: (observation as any).analysis,
+                is_urgent: (observation as any).is_urgent,
+                tags: (observation as any).tags
+            };
             break;
         case 'GENERAL_SUMMARY_GENERATED':
             next.insight = observation.summary;

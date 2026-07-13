@@ -81,10 +81,10 @@ export default {
     async queue(batch: any, env: Env, ctx: ExecutionContext): Promise<void> {
         console.log(`[QUEUE] Received batch of ${batch.messages.length} messages`);
         for (const message of batch.messages) {
-            const { url, traceId, perspective, chatId, messageId, text, entities, isMultiPost } = message.body;
+            const { url, traceId, perspective, toneTemplate, chatId, messageId, text, entities, isMultiPost } = message.body;
             console.log(`[QUEUE] Processing: ${url} (trace: ${traceId})`);
             try {
-                const result = await resolveLink(url, url, env, ctx, chatId, traceId, perspective, undefined, messageId, text, entities, isMultiPost);
+                const result = await resolveLink(url, url, env, ctx, chatId, traceId, perspective, undefined, messageId, text, entities, isMultiPost, toneTemplate);
                 console.log(`[QUEUE] Finished: ${url} -> ${result.ivLink}`);
             } catch (e) {
                 console.error('[QUEUE] CRITICAL FAILURE:', e);

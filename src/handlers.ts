@@ -5,7 +5,7 @@ import {
     filterBlogpostLinks,
     WELCOME_MESSAGE
 } from './domain';
-import { getPerspectiveForTelegramChat } from './perspective';
+import { getPerspectiveForTelegramChat, getToneTemplateForTelegramChat } from './perspective';
 import { executeEffect, type Env } from './executor';
 
 export async function handleReprocess(env: Env, ctx: ExecutionContext) {
@@ -71,6 +71,7 @@ export async function handleUpdate(update: any, env: Env, ctx: ExecutionContext)
     const chatId = chat.id;
     const entities = message.entities || message.caption_entities;
     const perspective = getPerspectiveForTelegramChat(chat);
+    const toneTemplate = getToneTemplateForTelegramChat(chat);
 
     if (text === '/start') {
         await executeEffect({ type: 'SEND_TELEGRAM', payload: { chatId, text: WELCOME_MESSAGE } }, env);
@@ -120,6 +121,7 @@ export async function handleUpdate(update: any, env: Env, ctx: ExecutionContext)
                 url, 
                 traceId, 
                 perspective, 
+                toneTemplate,
                 chatId, 
                 messageId: message.message_id, 
                 text, 

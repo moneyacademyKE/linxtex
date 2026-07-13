@@ -38,6 +38,10 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
 
         case 'GENERATE_METADATA': {
             let content = effect.payload.content;
+            if (effect.payload.previousInsight) {
+                const diffInstruction = `[PREVIOUS INSIGHT]: The last time this URL was enriched, the generated insight was: "${effect.payload.previousInsight}". Compare the current content to the previous insight and summarize only new updates or diffs if they exist, maintaining historical context.\n\n`;
+                content = diffInstruction + content;
+            }
             if (effect.payload.publishedTime) {
                 try {
                     const pubDate = new Date(effect.payload.publishedTime);
@@ -74,7 +78,13 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
         }
 
         case 'VERIFY_INSIGHT': {
-            const verification = await verifyInsight(effect.payload.content, effect.payload.insight, env.GEMINI_API_KEY, effect.payload.model);
+            const verification = await verifyInsight(
+                effect.payload.content,
+                effect.payload.insight,
+                env.GEMINI_API_KEY,
+                effect.payload.model,
+                effect.payload.perspective
+            );
             return verification ? { type: 'VERDICT_GENERATED', verdict: verification.verdict } : { type: 'ERROR_OCCURRED', message: 'Verification failed' };
         }
 
@@ -84,7 +94,22 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
         }
 
         case 'PUBLISH_TELEGRAPH': {
-            const nodes = transduceContent(effect.payload.content, '', 'default', effect.payload.baseUrl);
+            let parsingRules: any = undefined;
+            try {
+                const cachedRules = await env.FACTS.get('rules:parsing');
+                if (cachedRules) {
+                    parsingRules = JSON.parse(cachedRules);
+                } else if (env.DB) {
+                    const dbRule = await env.DB.prepare("SELECT rule_value FROM logic_rules WHERE rule_key = 'parsing' LIMIT 1").first();
+                    if (dbRule && dbRule.rule_value) {
+                        parsingRules = JSON.parse(dbRule.rule_value as string);
+                        await env.FACTS.put('rules:parsing', dbRule.rule_value as string, { expirationTtl: 300 });
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load custom logic rules:", err);
+            }
+            const nodes = transduceContent(effect.payload.content, '', 'default', effect.payload.baseUrl, parsingRules);
             if (!nodes || nodes.length === 0) return { type: 'ERROR_OCCURRED', message: 'No content to publish' };
             const ivLink = await makeTelegraphPage(effect.payload.title, nodes, env.TELEGRAPH_TOKEN || '');
             return ivLink ? { type: 'IV_LINK_GENERATED', ivLink } : { type: 'ERROR_OCCURRED', message: 'Publishing failed' };
@@ -191,6 +216,21 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
                     .run();
             }
             return { type: 'TELEGRAM_EDITED', success: res.ok };
+        }
+
+        case 'LOOKUP_PREVIOUS_INSIGHT': {
+            try {
+                const url = effect.payload.url;
+                const cached = await env.DB.prepare("SELECT insight FROM urls WHERE url = ? LIMIT 1")
+                    .bind(url)
+                    .first();
+                if (cached && cached.insight) {
+                    return { type: 'PREVIOUS_INSIGHT_FOUND', insight: cached.insight };
+                }
+            } catch (err) {
+                console.error("Previous insight lookup failed:", err);
+            }
+            return { type: 'PREVIOUS_INSIGHT_MISS' };
         }
 
         default:

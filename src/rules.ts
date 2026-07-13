@@ -1,4 +1,5 @@
 import { type ProcessingState, type Effect } from './types';
+import { getAuthorityScore } from './source_authority';
 
 export type Rule = (state: ProcessingState) => Effect[];
 
@@ -26,10 +27,13 @@ const deduplicationRule: Rule = (state) => {
 const metadataRule: Rule = (state) => {
     const isDedupOk = state.hash ? state.dedupChecked === true : true;
     if ((state.phase === 'ENRICHING' || state.phase === 'HEALING') && !state.insight && !state.metadataAttempted && isDedupOk) {
-        const content = state.textContent || state.content || '';
+        let content = state.textContent || state.content || '';
         const hints = state.healingHints;
         const perspective = state.perspective;
         if (content) {
+            if (state.fidelityRatio !== undefined && state.fidelityRatio < 0.12) {
+                content = `[LOW FIDELITY EXTRACTION WARNING]: The raw page structure is complex and the text density extracted was extremely low. Rely on contextual signals carefully.\n\n` + content;
+            }
             return [{
                 type: 'GENERATE_METADATA',
                 payload: {
@@ -37,6 +41,8 @@ const metadataRule: Rule = (state) => {
                     hints,
                     perspective,
                     publishedTime: state.publishedTime,
+                    authorityScore: getAuthorityScore(state.url),
+                    previousInsight: state.previousInsight,
                     model: 'gemini-3.1-flash-lite-preview'
                 }
             }];
@@ -87,7 +93,7 @@ const publishingRule: Rule = (state) => {
 
 const criticRule: Rule = (state) => {
     if (state.phase === 'VERIFYING' && !state.criticVerdict) {
-        return [{ type: 'VERIFY_INSIGHT', payload: { content: state.textContent || state.content || '', insight: state.insight || '', model: 'gemini-3.1-flash-lite-preview' } }];
+        return [{ type: 'VERIFY_INSIGHT', payload: { content: state.textContent || state.content || '', insight: state.insight || '', model: 'gemini-3.1-flash-lite-preview', perspective: state.perspective } }];
     }
     return [];
 };

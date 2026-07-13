@@ -66,5 +66,25 @@ The bot implements a specialized **High-Conviction Logic Path** for 100% of inge
 - **In-line Content Threshold (4000 Chars)**: To minimize friction, short-form content (under 4000 characters) is delivered **directly** to Telegram as a text message including the AI Insight and core content.
 - **Telegra.ph Fallback (>= 4000 Chars)**: Long-form content is automatically mirrored to a Telegra.ph Instant View page, with the original post transformed into a clickable, title-masked hyperlink.
 
+## ⚡ Modern Enhancements (Phase 10 & Phase 11)
+
+To ensure high accuracy, robust execution, and user personalization, the bot has been elevated with the following architectural components:
+
+### Phase 10: Inference & Routing Reliability
+- **Structured JSON Schemas**: Enforces native API schemas (via Zod/OpenAPI mappings) at token emission time, completely eliminating formatting hacks and parse failures.
+- **Content Hash Deduplication**: Computes SHA-256 hashes of text content for fast-forward lookups in D1, preventing redundant LLM inference costs.
+- **Graceful Degradation Cascades**: Implements a tier cascade (`financial` -> `general` -> `extractive`) to ensure the bot always delivers a useful response, even under rate limits.
+- **Signal Confidence Routing**: Routes delivery to three distinct templates based on relevance score (suppresses < 40, compacts 40-70, full Instant View for > 70).
+- **Temporal Grounding (Decay)**: Calculates article age and injects warning indicators to keep the model grounded in news freshness.
+
+### Phase 11: Grounding & Personalization
+- **Context-Sensitive Critic**: Evaluates target synthesis accuracy under the specific guiding lens perspective passed directly into the forensic critic verify engine.
+- **Proactive Browser Bypass**: Bypasses HTTP fetches for paywalled domains (Bloomberg, FT, Economist) by immediately executing Puppeteer rendering.
+- **Source Authority Grounding**: Ground prompt inputs using a predefined domain credibility scorecard (Bloomberg/Reuters = 95/100).
+- **Extraction Fidelity Grading**: Automatically calculates HTML-to-text extraction ratios and warns the model if layout complexity caused text context loss.
+- **Dynamic Projection Tone Templates**: Allows channel-specific custom format styling (verbosity level, ticker hashtags, and sentiment emojis).
+- **Semantic Diff Re-enrichment**: Pre-queries historical insights of the url to focus summaries on new accretion details since the last crawl.
+- **Live-Programmable Logic Rules**: Loads allowance rules dynamically from KV/D1 database configurations, eliminating worker redeployments.
+
 ---
 *Built with Rich Hickey quality principles for simplicity and de-complectation.*

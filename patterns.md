@@ -114,3 +114,33 @@ Stale or historical articles are synthesized as if they are breaking, urgent eve
 
 #### Solution
 Extract publication time metadata and inject a decay grounding warning prefix into the prompt context to adjust the urgency rating calculated by the model.
+
+## Phase 11 Patterns
+
+### Pre-scraped Browser Decoupling
+#### Problem
+Scraping paywalled or heavy client-rendered financial domains causes rate limiting and extraction failures.
+
+#### Solution
+Match the domain against a predetermined paywalled domain checklist at the start of the parse transaction. If a match occurs, route immediately to headless browser fetchers to bypass basic GET failures.
+
+### Contextual Tone templates
+#### Problem
+Providing rigid message formatting styles doesn't fit the requirements of separate channels that favor emojis, high brevity, or detailed analysis.
+
+#### Solution
+Retrieve formatting tone instructions mapping chat candidates and structure output styles dynamically inside the projection layer (compact, verbose, standard).
+
+### Pre-loop Fact Accumulation
+#### Problem
+Checking database tables inside state machine loop iterations complects the core and violates pure rules separation.
+
+#### Solution
+Query all necessary historical state information (like prior insights) before the loop execution starts, and pass it directly inside the initial state value.
+
+### Dynamic Allowed-tag Transduction
+#### Problem
+Adding/modifying element parsing rules (e.g. allowing new block elements in IV generation) requires re-compiling and re-deploying the worker.
+
+#### Solution
+Lookup custom allowedTags arrays from D1/KV during telegraph publishing and override the default static config arrays dynamically.

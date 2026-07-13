@@ -20,12 +20,13 @@ export function transduceContent(
     html: string,
     textFallback: string,
     format: 'default' | 'markdown' = 'default',
-    baseUrl?: string
+    baseUrl?: string,
+    rules?: any
 ): any[] {
     if (format === 'markdown') {
         return [{ tag: 'pre', children: [textFallback || 'No content'] }];
     }
-    const { nodes } = convertToTelegraphNodes(html, baseUrl);
+    const { nodes } = convertToTelegraphNodes(html, baseUrl, rules);
     if (nodes.length === 0) return [{ tag: 'p', children: [textFallback || 'No content extracted'] }];
     return nodes;
 }

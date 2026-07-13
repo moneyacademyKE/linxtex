@@ -26,7 +26,8 @@ export const ArticleSchema = z.object({
     textContent: z.string().optional(),
     url: z.string().optional(),
     tickers: z.array(z.string()).optional(),
-    publishedTime: z.string().optional()
+    publishedTime: z.string().optional(),
+    fidelityRatio: z.number().optional()
 });
 
 export type Article = z.infer<typeof ArticleSchema>;
@@ -53,7 +54,7 @@ export const EffectSchema = z.union([
     z.object({ type: z.literal('LOG_EVENT'), payload: z.any() }),
     z.object({ type: z.literal('LOG_INSIGHT'), payload: z.any() }),
     z.object({ type: z.literal('FETCH_LINK'), payload: z.any() }),
-    z.object({ type: z.literal('GENERATE_METADATA'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional(), publishedTime: z.string().optional(), model: z.string().optional() }) }),
+    z.object({ type: z.literal('GENERATE_METADATA'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional(), publishedTime: z.string().optional(), authorityScore: z.number().optional(), model: z.string().optional() }) }),
     z.object({ type: z.literal('GENERATE_DEEP_INSIGHT'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional(), model: z.string().optional() }) }),
     z.object({ type: z.literal('GENERATE_GENERAL_SUMMARY'), payload: z.object({ content: z.string(), model: z.string().optional() }) }),
     z.object({ type: z.literal('VERIFY_INSIGHT'), payload: z.any() }),
@@ -98,11 +99,13 @@ export type ProcessingState = {
     dedupCachedInsight?: string;
     qualityTier?: 'financial' | 'general' | 'extractive';
     relevanceScore?: number;
+    fidelityRatio?: number;
+    previousInsight?: string;
 };
 
 export type Observation = 
     | { type: 'REDIRECT_RESOLVED', url: string }
-    | { type: 'CONTENT_FETCHED', title: string, content: string, textContent: string, publishedTime?: string }
+    | { type: 'CONTENT_FETCHED', title: string, content: string, textContent: string, publishedTime?: string, fidelityRatio?: number }
     | { type: 'INSIGHTS_GENERATED', insight: string, rawInsight: string, relevanceScore: number, financialData?: any }
     | { type: 'STOCK_ANALYSIS_GENERATED', analysis: string }
     | { type: 'VERDICT_GENERATED', verdict: string }

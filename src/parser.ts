@@ -1,42 +1,49 @@
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 import { ArticleSchema, type Article } from './domain';
+import { requiresBrowserRendering } from './source_authority';
 import puppeteer from '@cloudflare/puppeteer';
 
 export async function extractContent(url: string, browserBinding?: any): Promise<Article> {
     let html: string;
     let finalUrl = url;
 
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+    const shouldForceBrowser = browserBinding && requiresBrowserRendering(url);
+    if (shouldForceBrowser) {
+        console.log(`[PROACTIVE BROWSER] Paywall/Heavy JS domain detected. Fetching ${url} with browser...`);
+        html = await fetchWithBrowser(url, browserBinding);
+    } else {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36'
-            },
-            redirect: 'follow',
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        finalUrl = response.url;
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36'
+                },
+                redirect: 'follow',
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            finalUrl = response.url;
 
-        if (response.status === 403 || response.status === 401 || !response.ok) {
+            if (response.status === 403 || response.status === 401 || !response.ok) {
+                if (browserBinding) {
+                    console.log(`Fetch failed with ${response.status}, falling back to browser-rendering for ${url}`);
+                    html = await fetchWithBrowser(url, browserBinding);
+                } else {
+                    throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+                }
+            } else {
+                html = await response.text();
+            }
+        } catch (err) {
             if (browserBinding) {
-                console.log(`Fetch failed with ${response.status}, falling back to browser-rendering for ${url}`);
+                console.log(`Fetch error, falling back to browser-rendering for ${url}:`, err);
                 html = await fetchWithBrowser(url, browserBinding);
             } else {
-                throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+                throw err;
             }
-        } else {
-            html = await response.text();
-        }
-    } catch (err) {
-        if (browserBinding) {
-            console.log(`Fetch error, falling back to browser-rendering for ${url}:`, err);
-            html = await fetchWithBrowser(url, browserBinding);
-        } else {
-            throw err;
         }
     }
 
@@ -55,7 +62,8 @@ export async function extractContent(url: string, browserBinding?: any): Promise
             title,
             content: threadContent,
             textContent: threadText,
-            url: finalUrl
+            url: finalUrl,
+            fidelityRatio: threadText.length / (html.length || 1)
         });
     }
 
@@ -97,7 +105,8 @@ export async function extractContent(url: string, browserBinding?: any): Promise
         content: data.content || '',
         textContent: data.textContent || '',
         url: finalUrl,
-        publishedTime
+        publishedTime,
+        fidelityRatio: (data.textContent || '').length / (html.length || 1)
     });
 }
 

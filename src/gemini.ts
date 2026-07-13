@@ -195,10 +195,14 @@ export async function verifyInsight(
     sourceText: string,
     insightText: string,
     apiKey: string,
-    model?: string
+    model?: string,
+    perspective?: string
 ): Promise<any | null> {
+    const perspectivePrompt = perspective && perspective !== 'default'
+        ? `\n\nPERSPECTIVE CHECK: The insight was generated through the lens of: ${perspective}. Verify whether the insight successfully focuses on this perspective and is accurate to both the source content and the perspective context.`
+        : '';
     return invokeAI({
-        prompt: PROMPTS.critic,
+        prompt: PROMPTS.critic + perspectivePrompt,
         text: `Source Content:\n${sourceText}\n\nGenerated Insight:\n${insightText}`,
         apiKey,
         model,

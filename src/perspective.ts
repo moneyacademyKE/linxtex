@@ -1,9 +1,20 @@
 export type TelegramPromptRule = {
     perspective: string;
     aliases?: string[];
+    toneTemplate?: {
+        useEmoji: boolean;
+        showFactCheck: boolean;
+        verbosity: 'compact' | 'standard' | 'verbose';
+    };
 };
 
 const DEFAULT_PERSPECTIVE = 'default';
+
+const DEFAULT_TONE = {
+    useEmoji: true,
+    showFactCheck: true,
+    verbosity: 'standard' as const
+};
 
 const TELEGRAM_CHANNEL_PROMPTS: Record<string, TelegramPromptRule> = {
     // Example:
@@ -51,4 +62,24 @@ export function getPerspectiveForTelegramChat(chat: { id?: number; username?: st
     }
 
     return DEFAULT_PERSPECTIVE;
+}
+
+export function getToneTemplateForTelegramChat(chat: { id?: number; username?: string; title?: string; type?: string } | undefined) {
+    if (!chat) return DEFAULT_TONE;
+
+    const candidates = [
+        chat.username ? `@${chat.username}` : undefined,
+        chat.username,
+        chat.id,
+        chat.title
+    ];
+
+    for (const candidate of candidates) {
+        const normalized = normalizeChannelKey(candidate);
+        if (!normalized) continue;
+        const matched = TELEGRAM_CHANNEL_PROMPT_LOOKUP.get(normalized);
+        if (matched?.toneTemplate) return matched.toneTemplate;
+    }
+
+    return DEFAULT_TONE;
 }

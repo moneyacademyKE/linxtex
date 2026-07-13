@@ -44,3 +44,10 @@
 *   **Signal Confidence Routing**: Dynamically switching delivery output based on relevance score (suppressing low relevance, compacting medium relevance, full broadcast for high relevance) keeps the signal-to-noise ratio exceptionally high for the feed.
 *   **Temporal Grounding (Decay)**: Calculating the age of the article from HTML metadata and injecting a temporal decay warning into the prompt keeps the AI grounded in real-time relevance, preventing it from treating stale reports as urgent.
 
+## Phase 11 Improvements (July 2026)
+*   **Context-Sensitive critic verification**: Mirroring guiding lens perspectives directly inside forensic verification prompts ensures that semantic assertions are checked under the exact same criteria that guided the synthesis.
+*   **Pre-Scrape paywall detection**: Proactively matching premium financial domains (Bloomberg, FT, Economist) before attempting standard fetches avoids unnecessary fetch failures, network errors, and login redirection traps.
+*   **Source Authority Pre-grounding**: Grounding LLM summarization with domain credibility configuration scores keeps the AI informed of news reliability upfront.
+*   **Pre-Loop state accumulation**: Pre-querying historical database details like `previousInsight` and initializing the state machine core with these facts de-complectes processing flow loops, preventing recursive lookups inside the state machine.
+*   **Live-Programmable Rules**: Fetching Allowed Tags configurations from KV/D1 at the imperative shell boundary enables logic rule adjustments without requiring worker rebuilds/re-deployments.
+
