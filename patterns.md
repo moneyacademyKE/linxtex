@@ -74,3 +74,43 @@ Enforce a hard limit of <250 LOC on all source files. Split code into highly coh
 - Code is instantly readable and fits entirely on a single screen page.
 - Unit tests can target individual functions in complete isolation.
 - Reduces Git merge conflicts and makes refactoring extremely simple.
+
+## Phase 10 Patterns
+
+### Structured Output Schema Enforcement
+#### Problem
+Parsing dynamic JSON string responses from LLMs is error-prone and requires string manipulation hacks to strip backticks, leading to runtime parse errors.
+
+#### Solution
+Define OpenAPI-compatible JSON Schemas inside the code and pass them to the API via `response_schema`. Enforces the schema shape at token emission time, guaranteeing valid JSON.
+
+### Content Hash Deduplication (Semantic Cache)
+#### Problem
+Repetitive scraping and enrichment of identical articles shared via different URLs wastes LLM tokens and API budget.
+
+#### Solution
+Compute the SHA-256 hash of raw parsed content, lookup historically generated insights using the hash, and perform a fast-forward transition directly to relational persistence on cache hit.
+
+### Graceful Degradation Cascade
+#### Problem
+ scraper failures or strict prompt scope limits (e.g. non-financial text) trigger complete pipeline processing failures, causing the bot to drop useful signals.
+
+#### Solution
+Construct a fallback hierarchy that degrades from deep financial analysis to a generic summary and finally to a direct extractive summary (first 3 sentences) if all LLM synthesis calls fail.
+
+### Signal Confidence Routing
+#### Problem
+Channel members get overwhelmed by low-value, marginal signals or noisy posts.
+
+#### Solution
+Inspect the relevance score and route signals to three distinct output templates:
+- `Score < 40`: Suppressed completely.
+- `Score 40-70`: Compact inline text message with title, summary, and original URL.
+- `Score > 70`: Full Instant View publication with stock ticker analysis.
+
+### Temporal decay grounding
+#### Problem
+Stale or historical articles are synthesized as if they are breaking, urgent events.
+
+#### Solution
+Extract publication time metadata and inject a decay grounding warning prefix into the prompt context to adjust the urgency rating calculated by the model.

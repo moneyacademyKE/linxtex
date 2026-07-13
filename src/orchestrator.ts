@@ -53,8 +53,20 @@ export async function resolveLink(
                 .run();
             return { suppressed: true, url: state.url };
         }
+
+        if (state.relevanceScore !== undefined && state.relevanceScore < 40) {
+            console.log(`[RESOLVE_LINK] Suppressing low-relevance signal (relevance_score: ${state.relevanceScore})`);
+            await env.DB.prepare("INSERT INTO events (event_type, data, chat_id) VALUES (?, ?, ?)")
+                .bind('SIGNAL_LOW_CONVICTION', JSON.stringify({ url: state.url, score: state.relevanceScore }), state.chatId)
+                .run();
+            return { suppressed: true, url: state.url };
+        }
         
-        if (state.content && state.content.length < skipIVThreshold && state.insight) {
+        if (state.relevanceScore !== undefined && state.relevanceScore <= 70 && state.insight) {
+            // Compact Inline Delivery: Title + Summary only (no full textContent)
+            outputText = `<b>${state.title}</b>\n\n<i>${state.insight}</i>\n\n<a href="${state.url}">Original Source</a>`;
+            console.log(`[RESOLVE_LINK] Projecting compact content (score: ${state.relevanceScore})`);
+        } else if (state.content && state.content.length < skipIVThreshold && state.insight) {
             // Short Content: Deliver text directly (Insight + Content)
             const insightText = `<b>${state.title}</b>\n\n<i>${state.insight}</i>\n\n${state.textContent || ''}`;
             outputText = insightText.slice(0, 4000); 

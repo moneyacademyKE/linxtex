@@ -86,12 +86,18 @@ export async function extractContent(url: string, browserBinding?: any): Promise
 
     const data = articleData as any;
 
+    const publishedTime = window.document.querySelector('meta[property="article:published_time"]')?.getAttribute('content') ||
+                          window.document.querySelector('meta[name="published_time"]')?.getAttribute('content') ||
+                          window.document.querySelector('meta[name="date"]')?.getAttribute('content') ||
+                          undefined;
+
     // Validate against schema
     return ArticleSchema.parse({
         title: data.title || 'Untitled Resource',
         content: data.content || '',
         textContent: data.textContent || '',
-        url: finalUrl
+        url: finalUrl,
+        publishedTime
     });
 }
 

@@ -21,11 +21,63 @@ export const InsightSchema = z.object({
 
 export type Insight = z.infer<typeof InsightSchema>;
 
-// --- Unified AI Inferencer (The De-complected Core) ---
+const InsightJsonSchema = {
+    type: 'object',
+    properties: {
+        fact_check: { type: 'string' },
+        summary: { type: 'string' },
+        analysis: { type: 'string' },
+        relevance_score: { type: 'number' },
+        is_urgent: { type: 'boolean' },
+        sentiment: { type: 'string', enum: ['bullish', 'bearish', 'neutral'] },
+        tickers: { type: 'array', items: { type: 'string' } },
+        tags: { type: 'array', items: { type: 'string' } },
+        triples: {
+            type: 'array',
+            items: {
+                type: 'object',
+                properties: {
+                    subject: { type: 'string' },
+                    predicate: { type: 'string' },
+                    object: { type: 'string' }
+                },
+                required: ['subject', 'predicate', 'object']
+            }
+        }
+    },
+    required: ['fact_check', 'summary', 'analysis', 'relevance_score', 'is_urgent', 'sentiment', 'tickers', 'tags', 'triples']
+};
 
-function cleanJson(text: string): string {
-    return text.replace(/^```json\s*/, '').replace(/\s*```$/, '').trim();
-}
+const StockAnalysisJsonSchema = {
+    type: 'object',
+    properties: {
+        ticker: { type: 'string' },
+        executive_summary: { type: 'string' },
+        points: { type: 'array', items: { type: 'string' } },
+        sentiment: { type: 'string', enum: ['bullish', 'bearish', 'neutral'] }
+    },
+    required: ['ticker', 'executive_summary', 'points', 'sentiment']
+};
+
+const GeneralSummaryJsonSchema = {
+    type: 'object',
+    properties: {
+        summary: { type: 'string' }
+    },
+    required: ['summary']
+};
+
+const CriticJsonSchema = {
+    type: 'object',
+    properties: {
+        verdict: { type: 'string', enum: ['Verified', 'Challenged', 'Hallucinated'] },
+        criticism: { type: 'string' },
+        confidence_score: { type: 'number' }
+    },
+    required: ['verdict', 'criticism', 'confidence_score']
+};
+
+// --- Unified AI Inferencer (The De-complected Core) ---
 
 type InvokeOptions = {
     prompt: string;
@@ -33,14 +85,20 @@ type InvokeOptions = {
     apiKey: string;
     model?: string;
     tools?: any[];
+    schema?: any;
 };
 
-async function invokeAI({ prompt, text, apiKey, model = 'gemini-3.1-flash-lite-preview', tools }: InvokeOptions): Promise<any | null> {
+async function invokeAI({ prompt, text, apiKey, model = 'gemini-3.1-flash-lite-preview', tools, schema }: InvokeOptions): Promise<any | null> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+    const generationConfig: any = { response_mime_type: 'application/json' };
+    if (schema) {
+        generationConfig.response_schema = schema;
+    }
 
     const body: any = {
         contents: [{ role: 'user', parts: [{ text: `${prompt}\n\n---\n\n${text}` }] }],
-        generationConfig: { response_mime_type: 'application/json' }
+        generationConfig
     };
 
     if (tools) body.tools = tools;
@@ -72,7 +130,7 @@ async function invokeAI({ prompt, text, apiKey, model = 'gemini-3.1-flash-lite-p
     if (!raw) return null;
 
     try {
-        return JSON.parse(cleanJson(raw));
+        return JSON.parse(raw);
     } catch {
         return null;
     }
@@ -99,7 +157,8 @@ export async function generateFinancialInsight(
         prompt: PROMPTS.financial + perspectiveOverride + healingOverride,
         text,
         apiKey,
-        model
+        model,
+        schema: InsightJsonSchema
     });
 
     if (!data) return null;
@@ -118,7 +177,8 @@ export async function generateStockAnalysis(
         text,
         apiKey,
         model,
-        tools: [{ google_search: {} }]
+        tools: [{ google_search: {} }],
+        schema: StockAnalysisJsonSchema
     });
 }
 
@@ -127,7 +187,7 @@ export async function generateGeneralSummary(
     apiKey: string,
     model?: string
 ): Promise<string | null> {
-    const data = await invokeAI({ prompt: PROMPTS.generalSummary, text, apiKey, model });
+    const data = await invokeAI({ prompt: PROMPTS.generalSummary, text, apiKey, model, schema: GeneralSummaryJsonSchema });
     return data?.summary ?? null;
 }
 
@@ -141,6 +201,7 @@ export async function verifyInsight(
         prompt: PROMPTS.critic,
         text: `Source Content:\n${sourceText}\n\nGenerated Insight:\n${insightText}`,
         apiKey,
-        model
+        model,
+        schema: CriticJsonSchema
     });
 }

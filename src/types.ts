@@ -25,7 +25,8 @@ export const ArticleSchema = z.object({
     content: z.string(),
     textContent: z.string().optional(),
     url: z.string().optional(),
-    tickers: z.array(z.string()).optional()
+    tickers: z.array(z.string()).optional(),
+    publishedTime: z.string().optional()
 });
 
 export type Article = z.infer<typeof ArticleSchema>;
@@ -52,11 +53,13 @@ export const EffectSchema = z.union([
     z.object({ type: z.literal('LOG_EVENT'), payload: z.any() }),
     z.object({ type: z.literal('LOG_INSIGHT'), payload: z.any() }),
     z.object({ type: z.literal('FETCH_LINK'), payload: z.any() }),
-    z.object({ type: z.literal('GENERATE_METADATA'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional() }) }),
-    z.object({ type: z.literal('GENERATE_DEEP_INSIGHT'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional() }) }),
+    z.object({ type: z.literal('GENERATE_METADATA'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional(), publishedTime: z.string().optional(), model: z.string().optional() }) }),
+    z.object({ type: z.literal('GENERATE_DEEP_INSIGHT'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional(), model: z.string().optional() }) }),
+    z.object({ type: z.literal('GENERATE_GENERAL_SUMMARY'), payload: z.object({ content: z.string(), model: z.string().optional() }) }),
     z.object({ type: z.literal('VERIFY_INSIGHT'), payload: z.any() }),
     z.object({ type: z.literal('RESOLVE_REDIRECTS'), payload: z.any() }),
-    z.object({ type: z.literal('CALCULATE_HASH'), payload: z.object({ content: z.string() }) })
+    z.object({ type: z.literal('CALCULATE_HASH'), payload: z.object({ content: z.string() }) }),
+    z.object({ type: z.literal('CHECK_CONTENT_HASH'), payload: z.object({ hash: z.string() }) })
 ]);
 
 export type Effect = z.infer<typeof EffectSchema>;
@@ -91,11 +94,15 @@ export type ProcessingState = {
     persistedRelational?: boolean;
     persistedTrace?: boolean;
     persistedCache?: boolean;
+    dedupChecked?: boolean;
+    dedupCachedInsight?: string;
+    qualityTier?: 'financial' | 'general' | 'extractive';
+    relevanceScore?: number;
 };
 
 export type Observation = 
     | { type: 'REDIRECT_RESOLVED', url: string }
-    | { type: 'CONTENT_FETCHED', title: string, content: string, textContent: string }
+    | { type: 'CONTENT_FETCHED', title: string, content: string, textContent: string, publishedTime?: string }
     | { type: 'INSIGHTS_GENERATED', insight: string, rawInsight: string, relevanceScore: number, financialData?: any }
     | { type: 'STOCK_ANALYSIS_GENERATED', analysis: string }
     | { type: 'VERDICT_GENERATED', verdict: string }
@@ -104,6 +111,9 @@ export type Observation =
     | { type: 'RELATIONAL_PERSISTED' }
     | { type: 'TRACE_PERSISTED' }
     | { type: 'CACHE_PERSISTED' }
+    | { type: 'DEDUP_HIT', insight: string, title: string, ivLink: string }
+    | { type: 'DEDUP_MISS' }
+    | { type: 'GENERAL_SUMMARY_GENERATED', summary: string }
     | { type: 'ERROR_OCCURRED', message: string, isTransient?: boolean };
 
 export const WELCOME_MESSAGE = `Welcome to LinxtexBot! 🤖\n\nSend me any link, and I will enrich it with AI-powered insights and an Instant View page.`;

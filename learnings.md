@@ -37,3 +37,10 @@
 *   **Decoupled Database Mocking**: Splitting a monolithic storage action into granular effects (`PERSIST_RELATIONAL`, `LOG_TRACE`, `CACHE_VIEW`) requires E2E test mock executors to mimic all separate side effects in order to satisfy downstream DB assertions.
 *   **Dual API Reprocess & Root Routing**: Standardizing endpoints like root `/` (returning 200) and mapping dual paths (such as `/reprocess` and `/api/reprocess`) protects the edge router from mismatching test cases and local proxies.
 
+## Phase 10 Improvements (July 2026)
+*   **Structured Outputs (Zero-Egress JSON)**: Enforcing JSON Schemas directly at the API token generation level completely removes post-generation regex formatting hacks (`cleanJson`) and parser exceptions. It ensures schema conformity by contract.
+*   **Content Hash Deduplication**: Using SHA-256 hashes of text content for lookup in historic logs enables semantic deduplication. This prevents duplicate AI generation costs for cross-posted articles and reduces API budget usage.
+*   **Graceful Degradation Cascades**: Building a fallback hierarchy (`financial` -> `generalSummary` -> `extractive`) ensures the bot always delivers a useful response, preventing API/scraper failures from causing silent dropouts.
+*   **Signal Confidence Routing**: Dynamically switching delivery output based on relevance score (suppressing low relevance, compacting medium relevance, full broadcast for high relevance) keeps the signal-to-noise ratio exceptionally high for the feed.
+*   **Temporal Grounding (Decay)**: Calculating the age of the article from HTML metadata and injecting a temporal decay warning into the prompt keeps the AI grounded in real-time relevance, preventing it from treating stale reports as urgent.
+

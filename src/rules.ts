@@ -16,13 +16,40 @@ const hashingRule: Rule = (state) => {
     return [];
 };
 
+const deduplicationRule: Rule = (state) => {
+    if (state.phase === 'ENRICHING' && state.hash && !state.dedupChecked) {
+        return [{ type: 'CHECK_CONTENT_HASH', payload: { hash: state.hash } }];
+    }
+    return [];
+};
+
 const metadataRule: Rule = (state) => {
-    if ((state.phase === 'ENRICHING' || state.phase === 'HEALING') && !state.insight && !state.metadataAttempted) {
+    const isDedupOk = state.hash ? state.dedupChecked === true : true;
+    if ((state.phase === 'ENRICHING' || state.phase === 'HEALING') && !state.insight && !state.metadataAttempted && isDedupOk) {
         const content = state.textContent || state.content || '';
         const hints = state.healingHints;
         const perspective = state.perspective;
         if (content) {
-            return [{ type: 'GENERATE_METADATA', payload: { content, hints, perspective } }];
+            return [{
+                type: 'GENERATE_METADATA',
+                payload: {
+                    content,
+                    hints,
+                    perspective,
+                    publishedTime: state.publishedTime,
+                    model: 'gemini-3.1-flash-lite-preview'
+                }
+            }];
+        }
+    }
+    return [];
+};
+
+const fallbackSummaryRule: Rule = (state) => {
+    if (state.phase === 'ENRICHING' && !state.insight && state.metadataAttempted && !state.qualityTier) {
+        const content = state.textContent || state.content || '';
+        if (content) {
+            return [{ type: 'GENERATE_GENERAL_SUMMARY', payload: { content, model: 'gemini-3.1-flash-lite-preview' } }];
         }
     }
     return [];
@@ -37,7 +64,8 @@ const synthesisRule: Rule = (state) => {
                 payload: {
                     content: state.textContent || state.content || '',
                     hints: state.healingHints,
-                    perspective: state.perspective
+                    perspective: state.perspective,
+                    model: 'gemini-3.1-flash-lite-preview'
                 }
             }];
         }
@@ -59,7 +87,7 @@ const publishingRule: Rule = (state) => {
 
 const criticRule: Rule = (state) => {
     if (state.phase === 'VERIFYING' && !state.criticVerdict) {
-        return [{ type: 'VERIFY_INSIGHT', payload: { content: state.textContent || state.content || '', insight: state.insight || '' } }];
+        return [{ type: 'VERIFY_INSIGHT', payload: { content: state.textContent || state.content || '', insight: state.insight || '', model: 'gemini-3.1-flash-lite-preview' } }];
     }
     return [];
 };
@@ -84,6 +112,8 @@ const persistenceRule: Rule = (state) => {
                     url: state.url,
                     hash: state.hash || '',
                     insight: state.stockAnalysis || state.insight,
+                    title: state.title || '',
+                    ivLink: state.ivLink || '',
                     metadata: {
                         model: 'gemini-3.1-flash-lite-preview',
                         timestamp: Date.now(),
@@ -117,7 +147,17 @@ const persistenceRule: Rule = (state) => {
 
 export function decideNextEffects(state: ProcessingState): Effect[] {
     if (state.phase === 'COMPLETE' || state.error) return [];
-    const rules: Rule[] = [discoveryRule, hashingRule, metadataRule, synthesisRule, publishingRule, criticRule, persistenceRule];
+    const rules: Rule[] = [
+        discoveryRule,
+        hashingRule,
+        deduplicationRule,
+        metadataRule,
+        fallbackSummaryRule,
+        synthesisRule,
+        publishingRule,
+        criticRule,
+        persistenceRule
+    ];
     const effects = rules.flatMap(rule => rule(state));
     return effects;
 }

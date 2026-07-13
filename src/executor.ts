@@ -6,7 +6,8 @@ import {
 } from './domain';
 import { 
     generateFinancialInsight, 
-    verifyInsight 
+    verifyInsight,
+    generateGeneralSummary
 } from './gemini';
 import { extractContent } from './parser';
 import { makeTelegraphPage } from './telegraph';
@@ -36,11 +37,26 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
         }
 
         case 'GENERATE_METADATA': {
+            let content = effect.payload.content;
+            if (effect.payload.publishedTime) {
+                try {
+                    const pubDate = new Date(effect.payload.publishedTime);
+                    if (!isNaN(pubDate.getTime())) {
+                        const daysAgo = Math.floor((Date.now() - pubDate.getTime()) / (1000 * 60 * 60 * 24));
+                        if (daysAgo >= 0) {
+                            const warningText = `[TEMPORAL GROUNDING NOTE]: This article was published ${daysAgo} days ago. Discount urgency and news freshness parameters if the content is stale or already priced in by markets.\n\n`;
+                            content = warningText + content;
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to parse publishedTime:", e);
+                }
+            }
             const insights = await generateFinancialInsight(
-                effect.payload.content,
+                content,
                 env.GEMINI_API_KEY,
                 effect.payload.hints,
-                undefined,
+                effect.payload.model,
                 effect.payload.perspective
             );
             return insights ? { type: 'INSIGHTS_GENERATED', insight: insights.summary, ...insights } : { type: 'ERROR_OCCURRED', message: 'Generation failed' };
@@ -51,15 +67,20 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
                 effect.payload.content,
                 env.GEMINI_API_KEY,
                 effect.payload.hints,
-                undefined,
+                effect.payload.model,
                 effect.payload.perspective
             );
             return deep ? { type: 'STOCK_ANALYSIS_GENERATED', analysis: deep.analysis } : { type: 'ERROR_OCCURRED', message: 'Deep analysis failed' };
         }
 
         case 'VERIFY_INSIGHT': {
-            const verification = await verifyInsight(effect.payload.content, effect.payload.insight, env.GEMINI_API_KEY);
+            const verification = await verifyInsight(effect.payload.content, effect.payload.insight, env.GEMINI_API_KEY, effect.payload.model);
             return verification ? { type: 'VERDICT_GENERATED', verdict: verification.verdict } : { type: 'ERROR_OCCURRED', message: 'Verification failed' };
+        }
+
+        case 'GENERATE_GENERAL_SUMMARY': {
+            const summary = await generateGeneralSummary(effect.payload.content, env.GEMINI_API_KEY, effect.payload.model);
+            return summary ? { type: 'GENERAL_SUMMARY_GENERATED', summary } : { type: 'ERROR_OCCURRED', message: 'General summary failed' };
         }
 
         case 'PUBLISH_TELEGRAPH': {
@@ -78,11 +99,18 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
         }
 
         case 'LOG_TRACE': {
-            const { traceId, url, hash, insight, metadata } = effect.payload;
+            const { traceId, url, hash, insight, title, ivLink, metadata } = effect.payload;
             if (hash) {
                 await env.DB.prepare("INSERT INTO insight_logs (trace_id, url, hash, insight, metadata) VALUES (?, ?, ?, ?, ?)")
                     .bind(traceId, url, hash, insight, JSON.stringify(metadata))
                     .run();
+                try {
+                    await env.DB.prepare("INSERT OR IGNORE INTO content_hashes (hash, title, iv_link) VALUES (?, ?, ?)")
+                        .bind(hash, title || '', ivLink || '')
+                        .run();
+                } catch (e) {
+                    console.error("Failed to insert content hash:", e);
+                }
             }
             return { type: 'TRACE_PERSISTED' };
         }
@@ -91,6 +119,25 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
             const { url, payload } = effect.payload;
             await env.FACTS.put(`insight:${url}`, JSON.stringify(payload), { expirationTtl: 86400 });
             return { type: 'CACHE_PERSISTED' };
+        }
+
+        case 'CHECK_CONTENT_HASH': {
+            try {
+                const cached = await env.DB.prepare(
+                    "SELECT l.insight, u.title, u.iv_link FROM insight_logs l LEFT JOIN urls u ON l.url = u.url WHERE l.hash = ? ORDER BY l.created_at DESC LIMIT 1"
+                ).bind(effect.payload.hash).first();
+                if (cached && cached.insight) {
+                    return { 
+                        type: 'DEDUP_HIT', 
+                        insight: cached.insight, 
+                        title: cached.title || 'Untitled', 
+                        ivLink: cached.iv_link || '' 
+                    };
+                }
+            } catch (err) {
+                console.error("Deduplication lookup failed:", err);
+            }
+            return { type: 'DEDUP_MISS' };
         }
 
         case 'SEND_TELEGRAM': {
