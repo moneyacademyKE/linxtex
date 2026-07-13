@@ -68,8 +68,8 @@
                 </p>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 my-8" id="feed-container">
-                <div class="col-span-3 text-center py-12 text-white/50">Listening for signals...</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 my-8" id="feed-container">
+                <div class="col-span-2 text-center py-12 text-white/50">Listening for signals...</div>
             </div>
 
             <footer class="liquid-glass w-full rounded-3xl p-6 md:p-10 text-white/70 mt-32 md:mt-64 animate-slide-up" style="animation-delay: 0.4s;">
@@ -179,29 +179,34 @@
                 else groups.general.items.push(data);
             });
             Object.entries(groups).forEach(([key, group]) => {
-                const col = document.createElement('div'); col.className = 'column';
+                const col = document.createElement('div');
+                const isGeneral = key === 'general';
+                col.className = isGeneral ? 'col-span-1 md:col-span-2 flex flex-col gap-6 mt-4' : 'column flex flex-col gap-6';
+                
+                const cardsHTML = group.items.map(item => {
+                    const sentiment = item.insight?.sentiment || null;
+                    const tickers = item.insight?.tickers || [];
+                    return `
+                        <div class="card liquid-glass rounded-2xl p-5 hover:-translate-y-1 transition-all duration-300 border-l-4 border-l-${group.color}-400" onclick="openModal('${encodeURIComponent(JSON.stringify(item))}')">
+                            <h4 class="text-white font-semibold text-sm leading-snug">${item.title}</h4>
+                            ${item.insight ? `<p class="text-xs text-white/50 line-clamp-3">${item.insight.summary}</p>` : '<p class="text-xs text-white/30 italic">No summary details.</p>'}
+                            <div class="flex justify-between items-center text-[10px] mt-2">
+                                ${sentiment ? `<span class="badge badge-${sentiment}">${sentiment}</span>` : '<span></span>'}
+                                <div class="flex gap-1">${tickers.map(t => `<span class="ticker">$${t}</span>`).join('')}</div>
+                            </div>
+                            <div class="flex justify-between items-center text-[10px] text-white/40 mt-3 pt-3 border-t border-white/5">
+                                <span>${new URL(item.url).hostname}</span>
+                                <span>${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
                 col.innerHTML = `
                     <div class="col-header col-${key} border-b border-white/10 text-white font-semibold text-xs tracking-wider uppercase flex items-center gap-2 pb-2">
                         <span class="w-2 h-2 rounded-full bg-${group.color}-400 shadow-[0_0_8px_var(--${key})]"></span>${group.title}
                     </div>
-                    ${group.items.map(item => {
-                        const sentiment = item.insight?.sentiment || null;
-                        const tickers = item.insight?.tickers || [];
-                        return `
-                            <div class="card liquid-glass rounded-2xl p-5 hover:-translate-y-1 transition-all duration-300 border-l-4 border-l-${group.color}-400" onclick="openModal('${encodeURIComponent(JSON.stringify(item))}')">
-                                <h4 class="text-white font-semibold text-sm leading-snug">${item.title}</h4>
-                                ${item.insight ? `<p class="text-xs text-white/50 line-clamp-3">${item.insight.summary}</p>` : '<p class="text-xs text-white/30 italic">No summary details.</p>'}
-                                <div class="flex justify-between items-center text-[10px] mt-2">
-                                    ${sentiment ? `<span class="badge badge-${sentiment}">${sentiment}</span>` : '<span></span>'}
-                                    <div class="flex gap-1">${tickers.map(t => `<span class="ticker">$${t}</span>`).join('')}</div>
-                                </div>
-                                <div class="flex justify-between items-center text-[10px] text-white/40 mt-3 pt-3 border-t border-white/5">
-                                    <span>${new URL(item.url).hostname}</span>
-                                    <span>${new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
+                    ${isGeneral ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">${cardsHTML}</div>` : `<div class="flex flex-col gap-6">${cardsHTML}</div>`}
                 `;
                 container.appendChild(col);
             });
