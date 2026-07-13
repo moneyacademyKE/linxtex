@@ -2,7 +2,11 @@ import {
     EffectSchema, 
     transformToNitter, 
     calculateHash, 
-    transduceContent 
+    transduceContent,
+    type Effect,
+    type Observation,
+    type ExecutorContext,
+    type FinancialData
 } from './domain';
 import { 
     generateFinancialInsight, 
@@ -19,21 +23,34 @@ export interface Env {
     DB: D1Database;
     FACTS: KVNamespace;
     ENRICHMENT_QUEUE: Queue;
-    BROWSER: any;
+    BROWSER: Fetcher;
 }
 
-export async function executeEffect(effect: any, env: Env): Promise<any> {
+export type ExecuteEffect = (effect: Effect, env: Env, context?: ExecutorContext) => Promise<Observation | null>;
+
+export async function executeEffect(effect: Effect, env: Env, _context?: ExecutorContext): Promise<Observation | null> {
     const validation = EffectSchema.safeParse(effect);
     if (!validation.success) {
         console.error('Effect validation failed:', JSON.stringify(effect, null, 2), validation.error);
         return null;
     }
 
-    switch (effect.type) {
+    const normalizedEffect = validation.data;
+
+    switch (normalizedEffect.type) {
         case 'FETCH_LINK': {
             const targetUrl = transformToNitter(effect.payload.url) || effect.payload.url;
             const article = await extractContent(targetUrl, env.BROWSER);
-            return article ? { type: 'CONTENT_FETCHED', ...article } : { type: 'ERROR_OCCURRED', message: 'Fetch failed' };
+            return article
+                ? {
+                    type: 'CONTENT_FETCHED',
+                    title: article.title,
+                    content: article.content,
+                    textContent: article.textContent || article.content,
+                    publishedTime: article.publishedTime,
+                    fidelityRatio: article.fidelityRatio
+                }
+                : { type: 'ERROR_OCCURRED', message: 'Fetch failed' };
         }
 
         case 'GENERATE_METADATA': {
@@ -63,7 +80,23 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
                 effect.payload.model,
                 effect.payload.perspective
             );
-            return insights ? { type: 'INSIGHTS_GENERATED', insight: insights.summary, ...insights } : { type: 'ERROR_OCCURRED', message: 'Generation failed' };
+            return insights
+                ? {
+                    type: 'INSIGHTS_GENERATED',
+                    insight: insights.summary,
+                    rawInsight: insights.summary,
+                    relevanceScore: insights.relevance_score,
+                    financialData: {
+                        sentiment: insights.sentiment,
+                        fact_check: insights.fact_check,
+                        analysis: insights.analysis,
+                        is_urgent: insights.is_urgent,
+                        tags: insights.tags,
+                        tickers: insights.tickers
+                    } as FinancialData,
+                    tickers: insights.tickers
+                }
+                : { type: 'ERROR_OCCURRED', message: 'Generation failed' };
         }
 
         case 'GENERATE_DEEP_INSIGHT': {
@@ -98,12 +131,12 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
             try {
                 const cachedRules = await env.FACTS.get('rules:parsing');
                 if (cachedRules) {
-                    parsingRules = JSON.parse(cachedRules);
+                    parsingRules = JSON.parse(cachedRules) as Record<string, unknown>;
                 } else if (env.DB) {
-                    const dbRule = await env.DB.prepare("SELECT rule_value FROM logic_rules WHERE rule_key = 'parsing' LIMIT 1").first();
-                    if (dbRule && dbRule.rule_value) {
-                        parsingRules = JSON.parse(dbRule.rule_value as string);
-                        await env.FACTS.put('rules:parsing', dbRule.rule_value as string, { expirationTtl: 300 });
+                    const dbRule = await env.DB.prepare("SELECT rule_value FROM logic_rules WHERE rule_key = 'parsing' LIMIT 1").first<{ rule_value?: string }>();
+                    if (dbRule?.rule_value) {
+                        parsingRules = JSON.parse(dbRule.rule_value) as Record<string, unknown>;
+                        await env.FACTS.put('rules:parsing', dbRule.rule_value, { expirationTtl: 300 });
                     }
                 }
             } catch (err) {
@@ -117,8 +150,10 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
 
         case 'PERSIST_RELATIONAL': {
             const { url, title, ivLink } = effect.payload;
-            await env.DB.prepare("INSERT OR REPLACE INTO urls (url, title, iv_link, last_enriched) VALUES (?, ?, ?, ?)")
-                .bind(url, title, ivLink, Date.now())
+            await env.DB.prepare(
+                "INSERT OR REPLACE INTO urls (url, title, iv_link, insight, last_enriched) VALUES (?, ?, ?, COALESCE((SELECT insight FROM urls WHERE url = ?), NULL), ?)"
+            )
+                .bind(url, title, ivLink, url, Date.now())
                 .run();
             return { type: 'RELATIONAL_PERSISTED' };
         }
@@ -128,6 +163,11 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
             if (hash) {
                 await env.DB.prepare("INSERT INTO insight_logs (trace_id, url, hash, insight, metadata) VALUES (?, ?, ?, ?, ?)")
                     .bind(traceId, url, hash, insight, JSON.stringify(metadata))
+                    .run();
+                await env.DB.prepare(
+                    "UPDATE urls SET insight = ?, trace_id = COALESCE(?, trace_id), last_enriched = ? WHERE url = ?"
+                )
+                    .bind(insight, traceId ?? null, Date.now(), url)
                     .run();
                 try {
                     await env.DB.prepare("INSERT OR IGNORE INTO content_hashes (hash, title, iv_link) VALUES (?, ?, ?)")
@@ -150,8 +190,8 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
             try {
                 const cached = await env.DB.prepare(
                     "SELECT l.insight, u.title, u.iv_link FROM insight_logs l LEFT JOIN urls u ON l.url = u.url WHERE l.hash = ? ORDER BY l.created_at DESC LIMIT 1"
-                ).bind(effect.payload.hash).first();
-                if (cached && cached.insight) {
+                ).bind(effect.payload.hash).first<{ insight: string | null; title: string | null; iv_link: string | null }>();
+                if (cached?.insight) {
                     return { 
                         type: 'DEDUP_HIT', 
                         insight: cached.insight, 
@@ -172,13 +212,13 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: chatId, ...rest, parse_mode: 'HTML' })
             });
-            const body = await res.json() as any;
+            const body = await res.json() as Record<string, unknown>;
             if (!res.ok) {
                 await env.DB.prepare("INSERT INTO events (event_type, data) VALUES (?, ?)")
                     .bind('API_DELIVERY_FAILURE', JSON.stringify({ method: 'sendMessage', payload: effect.payload, error: body }))
                     .run();
             }
-            return { type: 'TELEGRAM_SENT', success: res.ok };
+            return null;
         }
         
         case 'CALCULATE_HASH': {
@@ -193,13 +233,13 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: chatId, message_id: messageId, ...rest, parse_mode: 'HTML' })
             });
-            const body = await res.json() as any;
+            const body = await res.json() as Record<string, unknown>;
             if (!res.ok) {
                 await env.DB.prepare("INSERT INTO events (event_type, data) VALUES (?, ?)")
                     .bind('API_DELIVERY_FAILURE', JSON.stringify({ method: 'editMessageText', payload: effect.payload, error: body }))
                     .run();
             }
-            return { type: 'TELEGRAM_EDITED', success: res.ok };
+            return null;
         }
 
         case 'EDIT_TELEGRAM_CAPTION': {
@@ -209,28 +249,13 @@ export async function executeEffect(effect: any, env: Env): Promise<any> {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: chatId, message_id: messageId, ...rest, parse_mode: 'HTML' })
             });
-            const body = await res.json() as any;
+            const body = await res.json() as Record<string, unknown>;
             if (!res.ok) {
                 await env.DB.prepare("INSERT INTO events (event_type, data) VALUES (?, ?)")
                     .bind('API_DELIVERY_FAILURE', JSON.stringify({ method: 'editMessageCaption', payload: effect.payload, error: body }))
                     .run();
             }
-            return { type: 'TELEGRAM_EDITED', success: res.ok };
-        }
-
-        case 'LOOKUP_PREVIOUS_INSIGHT': {
-            try {
-                const url = effect.payload.url;
-                const cached = await env.DB.prepare("SELECT insight FROM urls WHERE url = ? LIMIT 1")
-                    .bind(url)
-                    .first();
-                if (cached && cached.insight) {
-                    return { type: 'PREVIOUS_INSIGHT_FOUND', insight: cached.insight };
-                }
-            } catch (err) {
-                console.error("Previous insight lookup failed:", err);
-            }
-            return { type: 'PREVIOUS_INSIGHT_MISS' };
+            return null;
         }
 
         default:

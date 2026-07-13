@@ -83,7 +83,7 @@ describe("Tier 2 Improvements Suite", () => {
                 if (effect.type === 'FETCH_LINK') return { type: 'CONTENT_FETCHED', title: 'Tesla stock drops', content: 'Tesla corp '.repeat(20), textContent: 'Tesla corp '.repeat(20) };
                 if (effect.type === 'CALCULATE_HASH') return { type: 'HASH_CALCULATED', hash: 'h1' };
                 if (effect.type === 'CHECK_CONTENT_HASH') return { type: 'DEDUP_MISS' };
-                if (effect.type === 'GENERATE_METADATA') return { type: 'INSIGHTS_GENERATED', insight: 'Synthesized Insight', relevanceScore: 80, sentiment: 'bearish', tickers: ['TSLA'] };
+                if (effect.type === 'GENERATE_METADATA') return { type: 'INSIGHTS_GENERATED', insight: 'Synthesized Insight', rawInsight: 'Synthesized Insight', relevanceScore: 80, financialData: { sentiment: 'bearish' }, tickers: ['TSLA'] };
                 if (effect.type === 'VERIFY_INSIGHT') return { type: 'VERDICT_GENERATED', verdict: JSON.stringify({ verdict: 'Verified', score: 95 }) };
                 if (effect.type === 'PUBLISH_TELEGRAPH') return { type: 'IV_LINK_GENERATED', ivLink: 'https://t.me/iv?url=some' };
                 if (effect.type === 'PERSIST_RELATIONAL') return { type: 'RELATIONAL_PERSISTED' };

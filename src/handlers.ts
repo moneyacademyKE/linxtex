@@ -3,23 +3,50 @@ import {
     isHomepage, 
     extractUrlsFromEntities, 
     filterBlogpostLinks,
-    WELCOME_MESSAGE
+    WELCOME_MESSAGE,
+    type TelegramEntity
 } from './domain';
 import { getPerspectiveForTelegramChat, getToneTemplateForTelegramChat } from './perspective';
 import { executeEffect, type Env } from './executor';
+
+type EventRow = { data: string | null };
+
+type ReprocessDebugRow = { url: string; isHome: boolean };
+
+type TelegramChat = {
+    id: number;
+    username?: string;
+    title?: string;
+    type?: string;
+};
+
+type TelegramMessage = {
+    text?: string;
+    chat: TelegramChat;
+    entities?: TelegramEntity[];
+    caption_entities?: TelegramEntity[];
+    message_id: number;
+};
+
+type TelegramUpdate = {
+    message?: TelegramMessage;
+    channel_post?: TelegramMessage;
+    edited_message?: TelegramMessage;
+    edited_channel_post?: TelegramMessage;
+};
 
 export async function handleReprocess(env: Env, ctx: ExecutionContext) {
     console.log('[REPROCESS] Starting link recovery from D1 Event Log...');
     
     // Fetch ALL MESSAGE_RECEIVED events
-    const events = await env.DB.prepare("SELECT data FROM events WHERE event_type = 'MESSAGE_RECEIVED'").all();
+    const events = await env.DB.prepare("SELECT data FROM events WHERE event_type = 'MESSAGE_RECEIVED'").all<EventRow>();
     
     if (!events.results || events.results.length === 0) {
         return { message: "No recent MESSAGE_RECEIVED events found in last 48h", results: 0 };
     }
 
     const urlsToEnrich = new Set<string>();
-    const debug: any[] = [];
+    const debug: ReprocessDebugRow[] = [];
 
     for (const row of events.results) {
         try {
@@ -61,7 +88,7 @@ export async function handleReprocess(env: Env, ctx: ExecutionContext) {
     };
 }
 
-export async function handleUpdate(update: any, env: Env, ctx: ExecutionContext) {
+export async function handleUpdate(update: TelegramUpdate, env: Env, ctx: ExecutionContext) {
     console.log('--- HANDLE UPDATE START ---');
     const message = update.message || update.channel_post || update.edited_message || update.edited_channel_post;
     if (!message || !message.text) return;

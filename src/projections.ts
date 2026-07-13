@@ -5,6 +5,24 @@ export interface UserStats {
     errors: number;
 }
 
+export interface ProjectionInsight {
+    summary: string;
+    sentiment: 'bullish' | 'bearish' | 'neutral' | string;
+    tickers: string[];
+    tags?: string[];
+    relevance_score: number;
+    fact_check?: string;
+    analysis?: string;
+    is_urgent?: boolean;
+}
+
+export interface StockAnalysisProjection {
+    ticker: string;
+    points: string[];
+    sentiment: 'bullish' | 'bearish' | 'neutral' | string;
+    executive_summary: string;
+}
+
 export async function getUserStats(db: D1Database, chatId: number): Promise<UserStats> {
     const results = await db.prepare(`
 		SELECT 
@@ -27,7 +45,8 @@ export async function getUserStats(db: D1Database, chatId: number): Promise<User
         errors: Number(results.errors)
     };
 }
-export function formatInsight(insight: any): string {
+
+export function formatInsight(insight: ProjectionInsight): string {
     const sentimentEmoji = insight.sentiment === 'bullish' ? '🟢' : insight.sentiment === 'bearish' ? '🔴' : '🟡';
     const tickers = insight.tickers.length > 0 ? `\n\n<b>Tickers:</b> ${insight.tickers.join(', ')}` : '';
 
@@ -36,16 +55,16 @@ export function formatInsight(insight: any): string {
 <b>Signal:</b> ${insight.summary}
 
 <b>Evidence Map:</b>
-${insight.fact_check}
+${insight.fact_check || ''}
 
 <b>Deep Dive:</b>
-${insight.analysis}${tickers}
+${insight.analysis || ''}${tickers}
 
 ---
 `;
 }
 
-export function formatStockAnalysis(analysis: any): string {
+export function formatStockAnalysis(analysis: StockAnalysisProjection): string {
     const sentimentEmoji = analysis.sentiment === 'bullish' ? '🟢' : analysis.sentiment === 'bearish' ? '🔴' : '🟡';
     return `📈 <b>13-POINT ANALYSIS: ${analysis.ticker}</b> ${sentimentEmoji}
 
@@ -77,3 +96,4 @@ export function formatStatsMessage(stats: UserStats): string {
 
 <i>Facts derived from your event history.</i>`;
 }
+

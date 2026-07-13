@@ -64,7 +64,7 @@ const fallbackSummaryRule: Rule = (state) => {
 const synthesisRule: Rule = (state) => {
     if (state.phase === 'ENRICHING' && state.insight && !state.stockAnalysis) {
         const financial = state.financialData;
-        if (financial && (financial.tickers?.length > 0)) {
+        if (financial?.tickers?.length) {
             return [{
                 type: 'GENERATE_DEEP_INSIGHT',
                 payload: {

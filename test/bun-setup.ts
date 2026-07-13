@@ -39,11 +39,28 @@ db.run(`
     );
 `);
 
+db.run(`
+    CREATE TABLE IF NOT EXISTS logic_rules (
+        rule_key TEXT PRIMARY KEY,
+        rule_value TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+`);
+
+db.run(`
+    CREATE TABLE IF NOT EXISTS content_hashes (
+        hash TEXT PRIMARY KEY,
+        title TEXT,
+        iv_link TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+`);
+
 const mockDb = {
     prepare: (query: string) => {
         const stmt = db.prepare(query);
         return {
-            bind: (...args: any[]) => ({
+            bind: (...args: unknown[]) => ({
                 first: () => Promise.resolve(stmt.get(...args)),
                 all: () => Promise.resolve({ results: stmt.all(...args) }),
                 run: () => {

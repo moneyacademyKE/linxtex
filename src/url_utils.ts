@@ -32,12 +32,19 @@ export function detectUrls(text: string): string[] {
     return urls;
 }
 
-export function extractUrlsFromEntities(text: string, entities?: any[]): string[] {
+export type TelegramMessageEntity = {
+    offset: number;
+    length: number;
+    type: 'url' | 'text_link' | string;
+    url?: string;
+};
+
+export function extractUrlsFromEntities(text: string, entities?: TelegramMessageEntity[]): string[] {
     const urls = new Set<string>();
     if (entities) {
         for (const entity of entities) {
             if (entity.type === 'url') urls.add(text.substring(entity.offset, entity.offset + entity.length));
-            else if (entity.type === 'text_link') urls.add(entity.url);
+            else if (entity.type === 'text_link' && entity.url) urls.add(entity.url);
         }
     }
     return Array.from(urls);

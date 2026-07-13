@@ -1,3 +1,5 @@
+import type { ToneTemplate } from './types';
+
 export type TelegramPromptRule = {
     perspective: string;
     aliases?: string[];
@@ -10,10 +12,10 @@ export type TelegramPromptRule = {
 
 const DEFAULT_PERSPECTIVE = 'default';
 
-const DEFAULT_TONE = {
+const DEFAULT_TONE: ToneTemplate = {
     useEmoji: true,
     showFactCheck: true,
-    verbosity: 'standard' as const
+    verbosity: 'standard'
 };
 
 const TELEGRAM_CHANNEL_PROMPTS: Record<string, TelegramPromptRule> = {

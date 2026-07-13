@@ -28,7 +28,13 @@ describe('Linxtex Bot Direct Logic Spec (Final)', () => {
 	beforeEach(() => { globalThis.fetch = vi.fn().mockImplementation(mockFetch); });
 	afterEach(() => { globalThis.fetch = originalFetch; vi.restoreAllMocks(); });
 	beforeAll(async () => {
-		const shemas = ['CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, data TEXT, chat_id INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)', 'CREATE TABLE IF NOT EXISTS urls (url TEXT PRIMARY KEY, title TEXT, iv_link TEXT, insight TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)', 'CREATE TABLE IF NOT EXISTS content_hashes (hash TEXT PRIMARY KEY, title TEXT, iv_link TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)', 'CREATE TABLE IF NOT EXISTS insight_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, content_hash TEXT, raw_insight TEXT, relevance_score INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)'];
+		const shemas = [
+			'CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, data TEXT, chat_id INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+			'CREATE TABLE IF NOT EXISTS urls (url TEXT PRIMARY KEY, title TEXT, iv_link TEXT, insight TEXT, trace_id TEXT, last_enriched INTEGER, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+			'CREATE TABLE IF NOT EXISTS content_hashes (hash TEXT PRIMARY KEY, title TEXT, iv_link TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+			'CREATE TABLE IF NOT EXISTS insight_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, trace_id TEXT, url TEXT, hash TEXT, insight TEXT, metadata TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)',
+			"CREATE TABLE IF NOT EXISTS logic_rules (rule_key TEXT PRIMARY KEY, rule_value TEXT NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+		];
 		for (const s of shemas) { await env.DB.prepare(s).run(); }
 	});
 

@@ -1,6 +1,22 @@
 import { type Env, executeEffect } from './executor';
 import { resolveLink } from './orchestrator';
 import { handleReprocess, handleUpdate } from './handlers';
+import type { TelegramEntity, ToneTemplate } from './types';
+
+type QueueBody = {
+    url: string;
+    traceId: string;
+    perspective?: string;
+    toneTemplate?: ToneTemplate;
+    chatId?: number;
+    messageId?: number;
+    text?: string;
+    entities?: TelegramEntity[];
+    isMultiPost?: boolean;
+};
+
+type QueueMessage = { body: QueueBody };
+type QueueBatch = { messages: QueueMessage[] };
 
 export { executeEffect } from './executor';
 export { resolveLink } from './orchestrator';
@@ -19,7 +35,7 @@ export async function webhookHandler(request: Request, env: Env, ctx: ExecutionC
 
     if (url.pathname === '/webhook' && request.method === 'POST') {
         try {
-            const update = await request.json();
+            const update = await request.json() as Parameters<typeof handleUpdate>[0];
             await handleUpdate(update, env, ctx);
             return new Response('OK');
         } catch (e) {
@@ -78,14 +94,14 @@ export default {
         return webhookHandler(request, env, ctx);
     },
 
-    async queue(batch: any, env: Env, ctx: ExecutionContext): Promise<void> {
+    async queue(batch: QueueBatch, env: Env, ctx: ExecutionContext): Promise<void> {
         console.log(`[QUEUE] Received batch of ${batch.messages.length} messages`);
         for (const message of batch.messages) {
             const { url, traceId, perspective, toneTemplate, chatId, messageId, text, entities, isMultiPost } = message.body;
             console.log(`[QUEUE] Processing: ${url} (trace: ${traceId})`);
             try {
                 const result = await resolveLink(url, url, env, ctx, chatId, traceId, perspective, undefined, messageId, text, entities, isMultiPost, toneTemplate);
-                console.log(`[QUEUE] Finished: ${url} -> ${result.ivLink}`);
+                console.log(`[QUEUE] Finished: ${url} -> ${'ivLink' in result ? result.ivLink : result.url}`);
             } catch (e) {
                 console.error('[QUEUE] CRITICAL FAILURE:', e);
                 if (env.DB) {

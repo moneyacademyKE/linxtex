@@ -1,12 +1,14 @@
+export type MiddlewareEnv = Record<string, unknown>;
+
 export type Middleware = (
     request: Request,
-    env: any,
+    env: MiddlewareEnv,
     ctx: ExecutionContext,
     next: () => Promise<Response>
 ) => Promise<Response>;
 
 export function composeMiddleware(middlewares: Middleware[]) {
-    return (request: Request, env: any, ctx: ExecutionContext): Promise<Response> => {
+    return (request: Request, env: MiddlewareEnv, ctx: ExecutionContext): Promise<Response> => {
         let index = -1;
 
         function dispatch(i: number): Promise<Response> {
@@ -25,7 +27,6 @@ export function composeMiddleware(middlewares: Middleware[]) {
     };
 }
 
-// Example middleware: Logger
 export const logMiddleware: Middleware = async (request, env, ctx, next) => {
     const start = Date.now();
     const response = await next();
@@ -34,15 +35,16 @@ export const logMiddleware: Middleware = async (request, env, ctx, next) => {
     return response;
 };
 
-// Example middleware: Error Handler
 export const errorMiddleware: Middleware = async (request, env, ctx, next) => {
     try {
         return await next();
-    } catch (err: any) {
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
         console.error('Unhandled error:', err);
-        return new Response(JSON.stringify({ error: err.message }), {
+        return new Response(JSON.stringify({ error: message }), {
             status: 500,
             headers: { 'Content-Type': 'application/json' }
         });
     }
 };
+

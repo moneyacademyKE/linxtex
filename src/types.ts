@@ -1,4 +1,39 @@
+
 import { z } from 'zod';
+
+export type ToneTemplate = {
+    useEmoji: boolean;
+    showFactCheck: boolean;
+    verbosity: 'compact' | 'standard' | 'verbose';
+};
+
+export type TelegramEntity = {
+    offset: number;
+    length: number;
+    type: string;
+    url?: string;
+};
+
+export type FinancialData = {
+    sentiment?: 'bullish' | 'bearish' | 'neutral' | string;
+    fact_check?: string;
+    analysis?: string;
+    is_urgent?: boolean;
+    tags?: string[];
+    tickers?: string[];
+};
+
+export type LinkResolutionResult =
+    | { suppressed: true; url: string }
+    | { originalUrl: string; ivLink: string; title: string; insight?: string };
+
+export type ExecutorContext = {
+    ctx?: ExecutionContext;
+    messageId?: number;
+    text?: string;
+    entities?: TelegramEntity[];
+    toneTemplate?: ToneTemplate;
+};
 
 export const LinkInsightSchema = z.object({
     url: z.string(),
@@ -47,14 +82,14 @@ export const EffectSchema = z.union([
     z.object({ type: z.literal('SEND_TELEGRAM'), payload: z.any() }),
     z.object({ type: z.literal('PUBLISH_TELEGRAPH'), payload: z.any() }),
     z.object({ type: z.literal('PERSIST_RELATIONAL'), payload: z.object({ url: z.string(), title: z.string(), ivLink: z.string().optional() }) }),
-    z.object({ type: z.literal('LOG_TRACE'), payload: z.object({ traceId: z.string(), url: z.string(), hash: z.string().optional(), insight: z.string(), metadata: z.any() }) }),
+    z.object({ type: z.literal('LOG_TRACE'), payload: z.object({ traceId: z.string(), url: z.string(), hash: z.string().optional(), insight: z.string(), title: z.string().optional(), ivLink: z.string().optional(), metadata: z.any() }) }),
     z.object({ type: z.literal('CACHE_VIEW'), payload: z.object({ url: z.string(), payload: z.any() }) }),
     z.object({ type: z.literal('EDIT_TELEGRAM_MESSAGE'), payload: z.object({ chatId: z.number(), messageId: z.number(), text: z.string(), entities: z.any().optional() }) }),
     z.object({ type: z.literal('EDIT_TELEGRAM_CAPTION'), payload: z.object({ chatId: z.number(), messageId: z.number(), caption: z.string(), entities: z.any().optional() }) }),
     z.object({ type: z.literal('LOG_EVENT'), payload: z.any() }),
     z.object({ type: z.literal('LOG_INSIGHT'), payload: z.any() }),
     z.object({ type: z.literal('FETCH_LINK'), payload: z.any() }),
-    z.object({ type: z.literal('GENERATE_METADATA'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional(), publishedTime: z.string().optional(), authorityScore: z.number().optional(), model: z.string().optional() }) }),
+    z.object({ type: z.literal('GENERATE_METADATA'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional(), publishedTime: z.string().optional(), authorityScore: z.number().optional(), previousInsight: z.string().optional(), model: z.string().optional() }) }),
     z.object({ type: z.literal('GENERATE_DEEP_INSIGHT'), payload: z.object({ content: z.string(), hints: z.string().optional(), perspective: z.string().optional(), model: z.string().optional() }) }),
     z.object({ type: z.literal('GENERATE_GENERAL_SUMMARY'), payload: z.object({ content: z.string(), model: z.string().optional() }) }),
     z.object({ type: z.literal('VERIFY_INSIGHT'), payload: z.any() }),
@@ -79,11 +114,12 @@ export type ProcessingState = {
     title?: string;
     content?: string;
     textContent?: string;
+    publishedTime?: string;
     hash?: string;
     ivLink?: string;
     insight?: string;
     stockAnalysis?: string;
-    financialData?: any;
+    financialData?: FinancialData;
     tickers?: string[];
     criticVerdict?: string;
     error?: string;
@@ -106,7 +142,7 @@ export type ProcessingState = {
 export type Observation = 
     | { type: 'REDIRECT_RESOLVED', url: string }
     | { type: 'CONTENT_FETCHED', title: string, content: string, textContent: string, publishedTime?: string, fidelityRatio?: number }
-    | { type: 'INSIGHTS_GENERATED', insight: string, rawInsight: string, relevanceScore: number, financialData?: any }
+    | { type: 'INSIGHTS_GENERATED', insight: string, rawInsight: string, relevanceScore: number, financialData?: FinancialData, tickers?: string[] }
     | { type: 'STOCK_ANALYSIS_GENERATED', analysis: string }
     | { type: 'VERDICT_GENERATED', verdict: string }
     | { type: 'IV_LINK_GENERATED', ivLink: string }

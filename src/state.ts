@@ -19,15 +19,9 @@ export function integrateObservation(state: ProcessingState, observation: Observ
             next.insight = observation.insight;
             next.metadataAttempted = true;
             next.qualityTier = 'financial';
-            next.relevanceScore = observation.relevanceScore ?? (observation as any).relevance_score;
-            next.tickers = (observation as any).tickers;
-            next.financialData = {
-                sentiment: (observation as any).sentiment,
-                fact_check: (observation as any).fact_check,
-                analysis: (observation as any).analysis,
-                is_urgent: (observation as any).is_urgent,
-                tags: (observation as any).tags
-            };
+            next.relevanceScore = observation.relevanceScore;
+            next.tickers = observation.tickers;
+            next.financialData = observation.financialData;
             break;
         case 'GENERAL_SUMMARY_GENERATED':
             next.insight = observation.summary;
