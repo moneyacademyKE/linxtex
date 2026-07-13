@@ -140,7 +140,7 @@ describe("Domain Logic", () => {
                 criticVerdict: '{"verdict":"Verified"}'
             };
             const effects = decideNextEffects(state);
-            expect(effects).toContainEqual(expect.objectContaining({ type: 'RECORD_INSIGHT' }));
+            expect(effects).toContainEqual(expect.objectContaining({ type: 'PERSIST_RELATIONAL' }));
         });
 
         it("handles ERROR_OCCURRED and terminates", () => {

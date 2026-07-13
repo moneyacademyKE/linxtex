@@ -20,6 +20,19 @@ describe("Gemini Integration", () => {
             expect(result?.summary).toBe("S");
         });
 
+        it("adds a perspective override to the prompt when provided", async () => {
+            const mockResponse = { candidates: [{ content: { parts: [{ text: "{\"summary\":\"S\",\"sentiment\":\"bullish\",\"relevance_score\":90,\"tickers\":[],\"tags\":[],\"fact_check\":\"\",\"analysis\":\"\",\"is_urgent\":false,\"triples\":[]}" }] } }] };
+            (fetch as any).mockResolvedValue(new Response(JSON.stringify(mockResponse), { status: 200 }));
+
+            await generateFinancialInsight("context", "key", undefined, undefined, "Macro desk lens");
+
+            expect(fetch).toHaveBeenCalledTimes(1);
+            const [, requestInit] = (fetch as any).mock.calls[0];
+            const parsedBody = JSON.parse(requestInit.body);
+            const promptText = parsedBody.contents[0].parts[0].text as string;
+            expect(promptText).toContain('PERSPECTIVE OVERRIDE: Focus your synthesis through the lens of: Macro desk lens.');
+        });
+
         it("returns null on API error", async () => {
             (fetch as any).mockResolvedValue(new Response("Error", { status: 500 }));
             expect(await generateFinancialInsight("context", "key")).toBeNull();

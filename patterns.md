@@ -57,3 +57,20 @@ This ensures the system only processes the "Highest Conviction" link when multip
 - **Noise Reduction Gate Pattern**: To protect the feed from junk, a final quality gate suppresses any signal where the extracted article content is $< 100$ characters. These events are logged as `SIGNAL_SUPPRESSED`.
 - **Scheduled Janitor Pattern**: In high-velocity data environments, stale facts are purged using a **Cron-driven Scheduled Worker**. A daily janitor deletes records older than 24 hours from SQL and expires them from the KV edge cache via `expirationTtl`.
 - **Nitter Redirection & Thread Unrolling Pattern**: To capture complex conversation context from X.com, the bot transparently redirects URLs to Nitter and uses specialized DOM selectors (`.tweet-content`) within the parser. This transforms a single-link tweet into a multi-tweet "long-form" article for unified AI synthesis.
+
+## Modular File Splitting Pattern (<250 LOC)
+### Problem
+Oversized files complect multiple responsibilities (e.g. types, state machine transitions, parser transducers, URL utilities) into a single module, violating the single responsibility principle and increasing cognitive load.
+
+### Solution
+Enforce a hard limit of <250 LOC on all source files. Split code into highly cohesive sub-modules:
+- `types.ts` for schemas and types.
+- `state.ts` for observation integration.
+- `rules.ts` for pure next effect decisions.
+- `url_utils.ts` and `transducers.ts` for pure transformations.
+- `index.ts` for entry point routing, re-exporting modules to maintain backward compatibility.
+
+### Benefits
+- Code is instantly readable and fits entirely on a single screen page.
+- Unit tests can target individual functions in complete isolation.
+- Reduces Git merge conflicts and makes refactoring extremely simple.

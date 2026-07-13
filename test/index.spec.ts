@@ -1,10 +1,10 @@
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, it, expect, beforeAll, vi, beforeEach, afterEach } from 'vitest';
-import { webhookHandler, executeEffect, handleUpdate, resolveLink } from '../src';
+import { webhookHandler, executeEffect, handleUpdate, resolveLink, getPerspectiveForTelegramChat } from '../src';
 
 describe('Linxtex Bot Direct Logic Spec (Final)', () => {
 	const originalFetch = globalThis.fetch;
-	const mockFetch = (url: string) => Promise.resolve({
+	const mockFetch = (url: string, options?: RequestInit) => Promise.resolve({
 		url, ok: true, status: 200, headers: new Headers({ 'Content-Type': 'application/json' }),
 		json: () => {
 			if (url.includes('generativelanguage.googleapis.com')) return Promise.resolve({
@@ -39,6 +39,32 @@ describe('Linxtex Bot Direct Logic Spec (Final)', () => {
 		ctx.waitUntil = (promise: Promise<any>) => { promises.push(promise); originalWaitUntil(promise); };
 		return { ctx, wait: async () => { let l = 0; while (promises.length > l) { const t = promises.slice(l); l = promises.length; await Promise.all(t); } } };
 	};
+
+	it('maps Telegram chats to a default perspective when no override exists', () => {
+		expect(getPerspectiveForTelegramChat({ id: 12345, username: 'unknown_channel', title: 'Unknown Channel' })).toBe('default');
+	});
+
+	it('threads derived perspective into queue payloads', async () => {
+		const queueSend = vi.fn().mockResolvedValue(undefined);
+		const mEnv = { ...env, ENRICHMENT_QUEUE: { send: queueSend } };
+		const { ctx } = createBlockingCtx();
+
+		await handleUpdate({
+			message: {
+				text: 'https://example.com/article',
+				chat: { id: 1, username: 'moneyacademyke', title: 'Money Academy' },
+				message_id: 99
+			}
+		}, mEnv as any, ctx);
+
+		expect(queueSend).toHaveBeenCalledTimes(1);
+		expect(queueSend).toHaveBeenCalledWith(expect.objectContaining({
+			url: 'https://example.com/article',
+			chatId: 1,
+			messageId: 99,
+			perspective: 'default'
+		}));
+	});
 
 	it('covers all webhookHandler logic directly', async () => {
 		const mEnv = { ...env, BROADCAST_CHAT_ID: "1", GEMINI_API_KEY: 'g', TELEGRAM_BOT_TOKEN: 't', FACTS: { get: vi.fn(), put: vi.fn() } };
@@ -76,7 +102,9 @@ describe('Linxtex Bot Direct Logic Spec (Final)', () => {
 	});
 
 	it('covers executeEffect switch types', async () => {
-		await executeEffect({ type: 'RECORD_INSIGHT', payload: { url: 'http://u', title: 't', ivLink: 'iv', insight: 'in', metadata: { traceId: 't1' } } }, env as any);
+		await executeEffect({ type: 'PERSIST_RELATIONAL', payload: { url: 'http://u', title: 't', ivLink: 'iv' } }, env as any);
+		await executeEffect({ type: 'LOG_TRACE', payload: { traceId: 't1', url: 'http://u', hash: 'h1', insight: 'in', metadata: {} } }, env as any);
+		await executeEffect({ type: 'CACHE_VIEW', payload: { url: 'http://u', payload: {} } }, env as any);
 		(fetch as any).mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, result: { url: 'u' } }), text: () => Promise.resolve('OK') });
 		await executeEffect({ type: 'GENERATE_METADATA', payload: { content: 'c' } }, env as any);
 		await executeEffect({ type: 'EDIT_TELEGRAM_MESSAGE', payload: { chatId: 1, messageId: 1, text: 't' } }, env as any);

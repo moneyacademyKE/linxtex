@@ -31,3 +31,9 @@
 - **Thread Unrolling for Contextual Synthesis**: For high-conviction signals from X.com, capturing the entire thread is non-negotiable. Fragments lead to hallucinations or incomplete insights; deep thread capture provides the AI with the full discussion context.
 - **Specialization within Universality**: While the orchestrator remains universal, specialized parsing branches for high-velocity domains (like Nitter) preserve the "High-Conviction" requirement.
 
+## Audit & Modernization (July 2026)
+*   **Modular File Splitting (<250 LOC)**: Forcing files to be under 250 lines of code enforces high cohesion, low coupling, and clear namespace separations. It transforms codebases into tiny, easily readable units.
+*   **Sequential Transition Ordering**: Order of evaluation in `integrateObservation` matters. State transition validations must be evaluated after all facts from the current observation (like bad verdict indicators) have been fully parsed and applied.
+*   **Decoupled Database Mocking**: Splitting a monolithic storage action into granular effects (`PERSIST_RELATIONAL`, `LOG_TRACE`, `CACHE_VIEW`) requires E2E test mock executors to mimic all separate side effects in order to satisfy downstream DB assertions.
+*   **Dual API Reprocess & Root Routing**: Standardizing endpoints like root `/` (returning 200) and mapping dual paths (such as `/reprocess` and `/api/reprocess`) protects the edge router from mismatching test cases and local proxies.
+

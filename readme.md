@@ -38,6 +38,15 @@ bun test test/e2e-integration.spec.ts
 - **Messaging**: Cloudflare Queues
 - **Publishing**: Telegra.ph (Instant View)
 
+## 🧠 AI Synthesis Prompts
+
+To keep the codebase clean, system instructions are decoupled and maintained as data in [prompts.ts](file:///Users/moe/Desktop/gh/linxtex/src/prompts.ts):
+
+- **Financial Synthesis (`financial`)**: Acts as a Senior Equity Analyst. Fact-checks claims, writes a 10-sentence Investment Committee summary, and generates a deep analysis detailing variants, boundaries, and 6-12 month impacts.
+- **Stock Analysis (`stockAnalysis`)**: Acts as a High-Conviction Investment Analyst. Evaluates a target ticker using a 13-point checklist grounded in real-time Web Search facts (price, market cap, news).
+- **General Summary (`generalSummary`)**: Acts as a Professional Editor. Synthesizes short posts/tweets in 3-5 sentences, or longer articles in up to 10 sentences.
+- **Forensic Critic (`critic`)**: Acts as a Forensic Auditor. Audits AI insights against source text to flag hallucinations, logical leaps, or omissions.
+
 ## 📑 Universal High-Conviction Processing
 
 The bot implements a specialized **High-Conviction Logic Path** for 100% of ingested items to ensure a premium, signal-to-noise optimized experience.

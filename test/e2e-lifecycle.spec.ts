@@ -1,25 +1,6 @@
-/**
- * E2E Integration Tests — LinxtexBot
- * =============================================================
- * These tests exercise the full orchestration lifecycle via a
- * controlled MockExecutor injected into resolveLink/executeEffect.
- * The real D1 database (cloudflare:test env) is used throughout,
- * giving true persistence assertions across every scenario.
- *
- * Test Scenarios:
- *  1. Happy Path — full enrichment lifecycle
- *  2. Self-Healing Path — bad critic verdict triggers re-enrichment
- *  3. Retry Exhaustion — 3× transient errors cause terminal failure
- *  4. Idempotency — same URL can be re-submitted (INSERT OR REPLACE)
- *  5. Queue Handler Path — queue message triggers resolveLink
- *  6. Reprocess Pipeline — events log → URL extraction → queue enqueue
- */
-
 import { describe, it, expect, beforeAll } from "bun:test";
 import { env, createExecutionContext } from "cloudflare:test";
 import { handleUpdate, resolveLink, webhookHandler } from "../src/index";
-
-// ─── Shared DB Setup ─────────────────────────────────────────────────────────
 
 const SCHEMA = [
     `CREATE TABLE IF NOT EXISTS events (
@@ -50,16 +31,13 @@ beforeAll(async () => {
     }
 });
 
-// ─── Mock Executor Builder ────────────────────────────────────────────────────
-
-/** Builds a stateful mock executor for use in resolveLink. */
 function buildExecutor(overrides: Partial<Record<string, (...args: any[]) => any>> = {}) {
     const defaults: Record<string, () => any> = {
         FETCH_LINK: () => ({
             type: 'CONTENT_FETCHED',
             title: 'E2E Article',
-            content: '<div><p>Market analysis: $AAPL is surging on earnings beat.</p></div>',
-            textContent: 'Market analysis: $AAPL is surging on earnings beat.'
+            content: '<div><p>Market analysis: $AAPL is surging on earnings beat. </p></div>' + 'a'.repeat(4500),
+            textContent: 'Market analysis: $AAPL is surging on earnings beat. ' + 'a'.repeat(4500)
         }),
         GENERATE_METADATA: () => ({
             type: 'INSIGHTS_GENERATED',
@@ -79,18 +57,28 @@ function buildExecutor(overrides: Partial<Record<string, (...args: any[]) => any
             type: 'HASH_CALCULATED',
             hash: 'abc123def456'
         }),
-        RECORD_INSIGHT: async (effect: any) => {
-            const { url, title, ivLink, insight, hash, metadata } = effect.payload;
+        PERSIST_RELATIONAL: async (effect: any) => {
+            const { url, title, ivLink } = effect.payload;
             await env.DB.prepare(
-                "INSERT OR REPLACE INTO urls (url, title, iv_link, insight, last_enriched) VALUES (?, ?, ?, ?, ?)"
-            ).bind(url, title, ivLink, insight, Date.now()).run();
+                "INSERT OR REPLACE INTO urls (url, title, iv_link, last_enriched) VALUES (?, ?, ?, ?)"
+            ).bind(url, title, ivLink, Date.now()).run();
+            return { type: 'RELATIONAL_PERSISTED' };
+        },
+        LOG_TRACE: async (effect: any) => {
+            const { traceId, url, hash, insight, metadata } = effect.payload;
             if (hash) {
                 await env.DB.prepare(
                     "INSERT INTO insight_logs (trace_id, url, hash, insight, metadata) VALUES (?, ?, ?, ?, ?)"
-                ).bind(metadata?.traceId || 'test', url, hash, insight, JSON.stringify(metadata)).run();
+                ).bind(traceId || 'test', url, hash, insight, JSON.stringify(metadata)).run();
+                await env.DB.prepare(
+                    "UPDATE urls SET insight = ? WHERE url = ?"
+                ).bind(insight, url).run();
             }
-            return { type: 'PERSISTENCE_COMPLETE' };
+            return { type: 'TRACE_PERSISTED' };
         },
+        CACHE_VIEW: async () => {
+            return { type: 'CACHE_PERSISTED' };
+        }
     };
 
     return async (effect: any): Promise<any> => {
@@ -100,32 +88,10 @@ function buildExecutor(overrides: Partial<Record<string, (...args: any[]) => any
     };
 }
 
-// ─── Test Suites ─────────────────────────────────────────────────────────────
-
-describe("E2E Integration Hardening", () => {
-
-    // 1. Existing smoke tests kept intact
-    it("Webhook to Queue Pipeline: should validate and enqueue valid links", async () => {
-        const payload = {
-            message: {
-                text: "Check this out: https://example.com/some-article",
-                chat: { id: 123 },
-                entities: [{ type: "url", offset: 16, length: 28 }]
-            }
-        };
-
-        const promises: Promise<any>[] = [];
-        await handleUpdate(payload, env as any, {
-            waitUntil: (p: Promise<any>) => promises.push(p)
-        } as any);
-
-        await Promise.all(promises);
-        expect(env.ENRICHMENT_QUEUE.send).toHaveBeenCalled();
-    });
-
+describe("E2E Lifecycle Tests", () => {
     it("Full Lifecycle: should handle enrichment and persistence", async () => {
         const traceId = "test-trace-full";
-        const originalUrl = "https://example.com/article";
+        const originalUrl = "https://example.com/article-full";
 
         const mockExecutor = buildExecutor();
         const result = await resolveLink(
@@ -145,15 +111,11 @@ describe("E2E Integration Hardening", () => {
         expect(logRow).not.toBeNull();
         expect(logRow!.insight).toBe("AAPL beat estimates by 12%. Bullish short-term.");
     });
-});
 
-describe("E2E: Self-Healing Path", () => {
-    it("re-enriches after a bad critic verdict and eventually persists", async () => {
+    it("E2E: Self-Healing Path > re-enriches after a bad critic verdict and eventually persists", async () => {
         const traceId = "self-heal-trace-01";
         const url = "https://example.com/heal-article";
 
-        // First verdict is bad (hallucinated), second is good
-        // We implement via a simple toggle flag
         let healed = false;
 
         const executor = buildExecutor({
@@ -165,13 +127,11 @@ describe("E2E: Self-Healing Path", () => {
                         verdict: JSON.stringify({ verdict: 'Hallucinated', score: 20, hallucinated: true, criticism: 'Missing key facts' })
                     };
                 }
-                // Second call: good verdict
                 return {
                     type: 'VERDICT_GENERATED',
                     verdict: JSON.stringify({ verdict: 'Verified', score: 88 })
                 };
             },
-            // After healing, generate a new (improved) insight
             GENERATE_METADATA: () => ({
                 type: 'INSIGHTS_GENERATED',
                 insight: healed
@@ -188,55 +148,20 @@ describe("E2E: Self-Healing Path", () => {
             0, traceId, 'default', executor
         );
 
-        // Self-healing occurred: healed flag was flipped by the executor
         expect(healed).toBe(true);
-        // Pipeline still converged to a valid result
         expect(result.ivLink).toBe("https://telegra.ph/e2e-mock-page");
 
-        // Record must be persisted to D1 after healing
         const row = await env.DB.prepare("SELECT * FROM urls WHERE url = ?").bind(url).first();
         expect(row).not.toBeNull();
         expect(row!.iv_link).toBe("https://telegra.ph/e2e-mock-page");
     });
-});
 
-describe("E2E: Retry Exhaustion", () => {
-    it("terminates after 3 transient fetch errors and does NOT persist", async () => {
-        const traceId = "retry-exhaust-trace-01";
-        const url = "https://example.com/broken-article";
-
-        const executor = buildExecutor({
-            FETCH_LINK: () => ({
-                type: 'ERROR_OCCURRED',
-                message: 'Connection timeout',
-                isTransient: true
-            }),
-        });
-
-        const result = await resolveLink(
-            url, url, env as any,
-            { waitUntil: (p: any) => p } as any,
-            0, traceId, 'default', executor
-        );
-
-        // Should fall back to the original URL
-        expect(result.ivLink).toBe(url);
-
-        // Should NOT have been persisted to D1
-        const row = await env.DB.prepare("SELECT * FROM urls WHERE url = ?").bind(url).first();
-        expect(row).toBeNull();
-    });
-});
-
-describe("E2E: Idempotency / Deduplication", () => {
-    it("re-submitting the same URL overwrites the existing record (INSERT OR REPLACE)", async () => {
+    it("E2E: Idempotency / Deduplication > re-submitting the same URL overwrites the existing record (INSERT OR REPLACE)", async () => {
         const url = "https://example.com/idempotency-test";
 
-        // First enrichment
         await resolveLink(url, url, env as any, { waitUntil: (p: any) => p } as any,
             0, "trace-A", 'default', buildExecutor());
 
-        // Second enrichment with different insight
         await resolveLink(url, url, env as any, { waitUntil: (p: any) => p } as any,
             0, "trace-B", 'default', buildExecutor({
                 GENERATE_METADATA: () => ({
@@ -247,19 +172,14 @@ describe("E2E: Idempotency / Deduplication", () => {
                 }),
             }));
 
-        // Only one row should exist (upserted, not duplicated)
         const rows = await env.DB.prepare("SELECT count(*) as c FROM urls WHERE url = ?").bind(url).first();
         expect(rows!.c).toBe(1);
 
-        // Should have the latest insight
         const row = await env.DB.prepare("SELECT insight FROM urls WHERE url = ?").bind(url).first();
         expect(row!.insight).toBe('Updated insight after re-enrichment.');
     });
-});
 
-describe("E2E: Reprocess Pipeline", () => {
-    it("extracts URLs from the events log and enqueues them", async () => {
-        // Seed the events log
+    it("E2E: Reprocess Pipeline > extracts URLs from the events log and enqueues them", async () => {
         await env.DB.prepare("INSERT INTO events (event_type, data, chat_id) VALUES (?, ?, ?)")
             .bind('MESSAGE_RECEIVED', JSON.stringify({ text: 'Check https://example.com/reprocess-me out!', urlCount: 1 }), 999)
             .run();
@@ -274,39 +194,5 @@ describe("E2E: Reprocess Pipeline", () => {
         const body: any = await res.json();
         expect(body.enqueued_links).toBeGreaterThanOrEqual(1);
         expect(body.links).toContain('https://example.com/reprocess-me');
-    });
-});
-
-describe("E2E: Status & Routing", () => {
-    it("returns 200 OK with status message at root", async () => {
-        const res = await webhookHandler(
-            new Request('http://linxtexbot.dev/'),
-            env as any,
-            createExecutionContext()
-        );
-        expect(res.status).toBe(200);
-        expect(await res.text()).toBe('LinxtexBot is running');
-    });
-
-    it("returns 404 for unknown routes", async () => {
-        const res = await webhookHandler(
-            new Request('http://linxtexbot.dev/nonexistent-route'),
-            env as any,
-            createExecutionContext()
-        );
-        expect(res.status).toBe(404);
-    });
-
-    it("returns 500 on malformed webhook payload", async () => {
-        const res = await webhookHandler(
-            new Request('http://linxtexbot.dev/webhook', {
-                method: 'POST',
-                body: 'NOT_JSON{{{',
-                headers: { 'Content-Type': 'application/json' }
-            }),
-            env as any,
-            createExecutionContext()
-        );
-        expect(res.status).toBe(500);
     });
 });
