@@ -1,90 +1,147 @@
-# LinxtexBot 🤖
+# LinxtexBot
 
-A high-reliability Telegram bot for financial link enrichment and Instant View publishing, built on Cloudflare Workers and Gemini AI.
+LinxtexBot is a Telegram-driven link enrichment worker built on Cloudflare Workers. It ingests links from Telegram chats and channels, extracts article content, generates finance-aware summaries and deep insights with Gemini, verifies those insights with a critic pass, and returns either inline Telegram output or a Telegraph/Instant View-style link depending on content quality and size.
 
-## 🚀 Features
+## What it does
 
-- **Automated Enrichment**: Extracts URLs from Telegram messages and generates deep financial insights.
-- **Instant View Publishing**: Automatically publishes high-fidelity Instant View pages via Telegra.ph.
-- **Critic Tier Verification**: Self-verifying AI pipeline that audits insights against source content to prevent hallucinations.
-- **Edge-First Persistence**: Durable factual storage using Cloudflare D1 (SQL) and KV (Cache).
-- **Idempotent Queue Processing**: Resilient, deduplicated background processing via Cloudflare Queues.
+- Ingests links from Telegram `message`, `channel_post`, `edited_message`, and `edited_channel_post` updates
+- Extracts URLs from both plain text and Telegram entities
+- Filters junk/homepage/profile links and ranks candidate URLs before processing
+- Fetches and parses content, including browser-assisted fallback for harder pages
+- Generates structured metadata and insight output with Gemini
+- Runs a critic/healing loop to catch weak or hallucinated output before persistence
+- Persists current URL state in D1 and operational/forensic traces in D1/KV
+- Projects the final result back to Telegram using channel-aware perspective and tone hooks
 
-## 🏗️ Architecture (Hickey-Mode)
+## Runtime shape
 
-The bot uses a **Pure Functional Core** with a **Linear State Machine** orchestrator. 
+Linxtex follows a functional-core / imperative-shell design.
 
-- **State Machine**: Driven by immutable `ProcessingState` and pure `decideNextEffects` logic.
-- **De-complectation**: Separation of Intent (Effects) from Execution (Shell) for 100% testability.
-- **Persistence**: Hybrid D1/KV model for canonical truth and high-speed view projections.
+- **Domain / state core**: `src/domain.ts` and `src/state.ts`
+- **Orchestration loop**: `src/orchestrator.ts`
+- **Effect execution**: `src/executor.ts`
+- **Telegram ingress**: `src/handlers.ts`
+- **Worker entrypoints**: `src/index.ts`
+- **Telegram output projection**: `src/telegram_projection.ts`
+- **Chat perspective/tone routing**: `src/perspective.ts`
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for a detailed technical overview.
+See `ARCHITECTURE.md` for the fuller breakdown.
 
-## 🧪 Testing
+## Current processing lifecycle
 
-The system is certified with a 100% pass-rate E2E integration suite.
+The implemented machine phases are:
+
+1. `RESOLVING`
+2. `ENRICHING`
+3. `VERIFYING`
+4. `HEALING`
+5. `PERSISTING`
+6. `COMPLETE`
+
+There is **no separate `PROJECTING` machine phase**. Final Telegram output is projected after the state loop exits.
+
+## Telegram-specific routing
+
+The worker already supports per-chat routing hooks in `src/perspective.ts`:
+
+- **Perspective**: influences Gemini synthesis via a `PERSPECTIVE OVERRIDE`
+- **Tone template**: controls things like emoji usage, verbosity, and fact-check display in Telegram output
+
+The matching surface supports:
+
+- `@username`
+- bare `username`
+- numeric `chat.id`
+- `chat.title`
+
+The mapping is currently scaffolded but not populated with real channel rules.
+
+## Persistence model
+
+Cloudflare D1 currently stores:
+
+| Table | Purpose |
+|---|---|
+| `events` | operational telemetry including Telegram ingest events |
+| `urls` | flattened current record for each processed URL |
+| `content_hashes` | dedupe and content-reuse index |
+| `insight_logs` | append-only forensic trace of insight output and metadata |
+| `logic_rules` | live-programmable parsing/config rules |
+
+The `urls` table now includes runtime fields such as:
+
+- `insight`
+- `trace_id`
+- `last_enriched`
+
+Schema evolution is migration-first now. See `docs/database.md`.
+
+## Worker endpoints and triggers
+
+Defined in `wrangler.jsonc`:
+
+- **Webhook**: `POST /webhook`
+- **Reprocess API**: `GET /reprocess` and `GET /api/reprocess`
+- **Feed API**: `GET /api/feed`
+- **Vitals API**: `GET /api/vitals`
+- **Queue consumer**: `linxtex-enrichment`
+- **Scheduled cleanup**: `0 0 * * *`
+
+Bindings:
+
+- `DB` → D1 database `iv-cache`
+- `FACTS` → KV namespace
+- `ENRICHMENT_QUEUE` → Cloudflare Queue
+- `BROWSER` → Cloudflare Browser binding
+
+## Local development
+
+### Install dependencies
 
 ```bash
-# Run the full integration suite
-bun test test/e2e-integration.spec.ts
+bun install
 ```
 
-## 🛠️ Tech Stack
+### Run locally
 
-- **Platform**: Cloudflare Workers (Bun-native)
-- **AI**: Google Gemini (Flash/Pro)
-- **DB**: Cloudflare D1
-- **Storage**: Cloudflare KV
-- **Messaging**: Cloudflare Queues
-- **Publishing**: Telegra.ph (Instant View)
+```bash
+bun run dev
+```
 
-## 📑 Link Processing Capabilities
+### Type-check
 
-The processing engine operates as a **Pure Functional Core / Imperative Shell** state machine over a 6-phase lifecycle:
+```bash
+bun run typecheck
+```
 
-- **Ingestion, Filtering, & Scoring Heuristics**: Automatically ignores root homepages and known CDN assets. Scores URLs using a scoring heuristic (`filterBlogpostLinks`) prioritizing deep-dive content (Substack, Medium) over social profile links.
-- **Speculative Parallelism**: Messages with $> 3$ links trigger *Isolated Broadcast Mode*, splitting signals into concurrent events for parallel resolution.
-- **Nitter Translation & Thread Unrolling**: Twitter/X.com links are redirected to Nitter instances, and thread CSS selectors unroll multi-tweet threads to preserve full context.
-- **Readability & Transduction**: Uses Mozilla Readability for extraction, transduces HTML into safe Telegraph JSON nodes, extracts stock tickers (`$AAPL`), and suppresses failed/low-fidelity content (< 100 characters).
-- **Epistemic Critic Verification & Healing**: AI insights are verified against source text. Hallucinations trigger the `HEALING` phase, feeding correction hints back to the generation pass.
-- **Adaptive Delivery**: Short content (< 4000 characters) is posted directly as a text block; long content is published as a Telegra.ph Instant View page.
+### Run tests
 
-## 🧠 AI Synthesis Prompts
+```bash
+bun test
+```
 
-To keep the codebase clean, system instructions are decoupled and maintained as data in [prompts.ts](file:///Users/moe/Desktop/gh/linxtex/src/prompts.ts):
+## Database migrations
 
-- **Financial Synthesis (`financial`)**: Acts as a Senior Equity Analyst. Fact-checks claims, writes a 10-sentence Investment Committee summary, and generates a deep analysis detailing variants, boundaries, and 6-12 month impacts.
-- **Stock Analysis (`stockAnalysis`)**: Acts as a High-Conviction Investment Analyst. Evaluates a target ticker using a 13-point checklist grounded in real-time Web Search facts (price, market cap, news).
-- **General Summary (`generalSummary`)**: Acts as a Professional Editor. Synthesizes short posts/tweets in 3-5 sentences, or longer articles in up to 10 sentences.
-- **Forensic Critic (`critic`)**: Acts as a Forensic Auditor. Audits AI insights against source text to flag hallucinations, logical leaps, or omissions.
+Migrations now live in `migrations/` and are the source of truth for D1 schema evolution.
 
-## 📑 Universal High-Conviction Processing
+Apply them with Wrangler:
 
-The bot implements a specialized **High-Conviction Logic Path** for 100% of ingested items to ensure a premium, signal-to-noise optimized experience.
+```bash
+wrangler d1 migrations apply iv-cache --local
+wrangler d1 migrations apply iv-cache --remote
+```
 
-- **Low-Content Filter (100 Chars)**: To maintain a high-conviction feed, articles with under 100 characters of meaningful content (junk, blockers, empty pages) are automatically suppressed and not broadcast.
-- **In-line Content Threshold (4000 Chars)**: To minimize friction, short-form content (under 4000 characters) is delivered **directly** to Telegram as a text message including the AI Insight and core content.
-- **Telegra.ph Fallback (>= 4000 Chars)**: Long-form content is automatically mirrored to a Telegra.ph Instant View page, with the original post transformed into a clickable, title-masked hyperlink.
+`schema.sql` remains in the repo as a snapshot/bootstrap convenience file, not the authoritative migration history.
 
-## ⚡ Modern Enhancements (Phase 10 & Phase 11)
+## Deployment
 
-To ensure high accuracy, robust execution, and user personalization, the bot has been elevated with the following architectural components:
+```bash
+bun run deploy
+```
 
-### Phase 10: Inference & Routing Reliability
-- **Structured JSON Schemas**: Enforces native API schemas (via Zod/OpenAPI mappings) at token emission time, completely eliminating formatting hacks and parse failures.
-- **Content Hash Deduplication**: Computes SHA-256 hashes of text content for fast-forward lookups in D1, preventing redundant LLM inference costs.
-- **Graceful Degradation Cascades**: Implements a tier cascade (`financial` -> `general` -> `extractive`) to ensure the bot always delivers a useful response, even under rate limits.
-- **Signal Confidence Routing**: Routes delivery to three distinct templates based on relevance score (suppresses < 40, compacts 40-70, full Instant View for > 70).
-- **Temporal Grounding (Decay)**: Calculates article age and injects warning indicators to keep the model grounded in news freshness.
+That runs `wrangler deploy` using the current Worker config in `wrangler.jsonc`.
 
-### Phase 11: Grounding & Personalization
-- **Context-Sensitive Critic**: Evaluates target synthesis accuracy under the specific guiding lens perspective passed directly into the forensic critic verify engine.
-- **Proactive Browser Bypass**: Bypasses HTTP fetches for paywalled domains (Bloomberg, FT, Economist) by immediately executing Puppeteer rendering.
-- **Source Authority Grounding**: Ground prompt inputs using a predefined domain credibility scorecard (Bloomberg/Reuters = 95/100).
-- **Extraction Fidelity Grading**: Automatically calculates HTML-to-text extraction ratios and warns the model if layout complexity caused text context loss.
-- **Dynamic Projection Tone Templates**: Allows channel-specific custom format styling (verbosity level, ticker hashtags, and sentiment emojis).
-- **Semantic Diff Re-enrichment**: Pre-queries historical insights of the url to focus summaries on new accretion details since the last crawl.
-- **Live-Programmable Logic Rules**: Loads allowance rules dynamically from KV/D1 database configurations, eliminating worker redeployments.
+## Notes
 
----
-*Built with Rich Hickey quality principles for simplicity and de-complectation.*
+- `readme.md` is lowercase in this repo, so keep links/scripts honest.
+- The repo currently contains significant uncommitted application changes alongside these docs updates; commit carefully, not like a drunk raccoon with write access.
