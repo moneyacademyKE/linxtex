@@ -38,6 +38,17 @@ bun test test/e2e-integration.spec.ts
 - **Messaging**: Cloudflare Queues
 - **Publishing**: Telegra.ph (Instant View)
 
+## 📑 Link Processing Capabilities
+
+The processing engine operates as a **Pure Functional Core / Imperative Shell** state machine over a 6-phase lifecycle:
+
+- **Ingestion, Filtering, & Scoring Heuristics**: Automatically ignores root homepages and known CDN assets. Scores URLs using a scoring heuristic (`filterBlogpostLinks`) prioritizing deep-dive content (Substack, Medium) over social profile links.
+- **Speculative Parallelism**: Messages with $> 3$ links trigger *Isolated Broadcast Mode*, splitting signals into concurrent events for parallel resolution.
+- **Nitter Translation & Thread Unrolling**: Twitter/X.com links are redirected to Nitter instances, and thread CSS selectors unroll multi-tweet threads to preserve full context.
+- **Readability & Transduction**: Uses Mozilla Readability for extraction, transduces HTML into safe Telegraph JSON nodes, extracts stock tickers (`$AAPL`), and suppresses failed/low-fidelity content (< 100 characters).
+- **Epistemic Critic Verification & Healing**: AI insights are verified against source text. Hallucinations trigger the `HEALING` phase, feeding correction hints back to the generation pass.
+- **Adaptive Delivery**: Short content (< 4000 characters) is posted directly as a text block; long content is published as a Telegra.ph Instant View page.
+
 ## 🧠 AI Synthesis Prompts
 
 To keep the codebase clean, system instructions are decoupled and maintained as data in [prompts.ts](file:///Users/moe/Desktop/gh/linxtex/src/prompts.ts):
