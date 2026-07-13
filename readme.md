@@ -25,7 +25,7 @@ Linxtex follows a functional-core / imperative-shell design.
 - **Telegram output projection**: `src/telegram_projection.ts`
 - **Chat perspective/tone routing**: `src/perspective.ts`
 
-See `ARCHITECTURE.md` for the fuller breakdown.
+See `ARCHITECTURE.md` for the fuller breakdown, `playbook.md` for the operator/developer guide, and `docs/database.md` for migration discipline.
 
 ## Current processing lifecycle
 
